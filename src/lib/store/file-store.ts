@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { Article, BiggerPicture, Bookmark, Edition, EditionSummary, FeedbackEvent, IngestionRun, ReaderPreferences, SourceHealth } from "../types";
+import { hydratePreferences } from "../preferences";
 import type { TopicId } from "../topics";
 import type { ArticleQuery, CachedSummary, FeedbackDeleteFilter, Store } from "./types";
 
@@ -162,7 +163,7 @@ export class FileStore implements Store {
   // ---- reader data -------------------------------------------------------------
 
   getPreferences(userId: string): Promise<ReaderPreferences | null> {
-    return this.read((data) => data.preferences[userId] ?? null);
+    return this.read((data) => hydratePreferences(data.preferences[userId] ?? null));
   }
 
   savePreferences(userId: string, prefs: ReaderPreferences): Promise<void> {

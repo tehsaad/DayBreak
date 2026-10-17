@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   const body = await parseBody(req, Body);
   if (!body.ok) return body.response;
   const prefs = await reader.store.getPreferences(reader.userId);
-  if (!prefs) return apiError(409, "Complete onboarding first", { next: "/onboarding" });
+  if (!prefs?.onboardedAt) return apiError(409, "Complete onboarding first", { next: "/onboarding" });
   if (body.data.mode === "regenerate") {
     const rl = rateLimit("generate", reader.userId);
     if (!rl.ok) return tooMany(rl.retryAfter);

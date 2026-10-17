@@ -44,7 +44,7 @@ export function SavedList({ bookmarks, timeZone }: { bookmarks: Bookmark[]; time
                     Read at {b.article.publisher} <ArrowUpRight size={13} aria-hidden />
                   </a>
                 ) : null}
-                {b.editionId ? <Link href={`/paper/${b.editionId}`} className="text-muted underline">From this edition</Link> : null}
+                {b.editionId ? <Link href={`/newspaper/${b.editionId}`} className="text-muted underline">From this edition</Link> : null}
                 <button type="button" onClick={() => remove(b.articleId)} disabled={pending} className="inline-flex items-center gap-1 text-muted hover:text-accent">
                   <Trash2 size={13} aria-hidden /> Remove
                 </button>

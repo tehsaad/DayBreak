@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Newsreader, Source_Serif_4 } from "next/font/google";
-import { SiteHeader } from "@/components/site-header";
-import { SiteFooter } from "@/components/site-footer";
 import { OfflineBanner } from "@/components/offline-banner";
 import "./globals.css";
 
@@ -13,6 +11,7 @@ export const metadata: Metadata = {
   title: { default: "DAYBREAK — The world, filtered through you", template: "%s · DAYBREAK" },
   description: "A personal morning paper: real reporting from trusted publishers, ranked for you, explained, and printable.",
   applicationName: "DAYBREAK",
+  metadataBase: new URL(process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000"),
 };
 
 export const viewport: Viewport = {
@@ -21,6 +20,7 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+/** Root layout: fonts and document only. The marketing site and the reader app add their own chrome. */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${newsreader.variable} ${sourceSerif.variable} ${inter.variable}`}>
@@ -28,12 +28,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:bg-ink focus:px-3 focus:py-2 focus:font-sans focus:text-sm focus:text-paper">
           Skip to content
         </a>
-        <SiteHeader />
         <OfflineBanner />
-        <main id="main" className="flex-1">
-          {children}
-        </main>
-        <SiteFooter />
+        {children}
       </body>
     </html>
   );

@@ -36,7 +36,7 @@ export default async function Home() {
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           {prefs ? (
             <>
-              <Link href="/paper" className="btn btn-primary !px-6 !py-3 !text-base">
+              <Link href="/newspaper" className="btn btn-primary !px-6 !py-3 !text-base">
                 Read today&apos;s paper <ArrowRight size={18} aria-hidden />
               </Link>
               <Link href="/settings" className="btn btn-ghost !px-6 !py-3 !text-base">Adjust your paper</Link>

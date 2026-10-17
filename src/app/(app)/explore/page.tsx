@@ -144,12 +144,12 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
               <li key={story.article.id} className="grid gap-3 md:grid-cols-[1fr_2fr]">
                 <div>
                   <p className="kicker">Latest · {latest ? formatEditionDate(latest.editionDate, "short") : ""}</p>
-                  <Link href={`/paper/${latest!.id}#story-${story.article.id}`} className="headline text-xl hover:text-accent">{story.article.title}</Link>
+                  <Link href={`/newspaper/${latest!.id}#story-${story.article.id}`} className="headline text-xl hover:text-accent">{story.article.title}</Link>
                 </div>
                 <ul className="border-l-2 border-rule pl-4">
                   {earlier.map((e) => (
                     <li key={e.editionId + e.title} className="py-1 text-sm">
-                      <Link href={`/paper/${e.editionId}`} className="font-sans text-xs font-semibold text-muted hover:text-ink">{formatEditionDate(e.editionDate, "short")}</Link>{" "}
+                      <Link href={`/newspaper/${e.editionId}`} className="font-sans text-xs font-semibold text-muted hover:text-ink">{formatEditionDate(e.editionDate, "short")}</Link>{" "}
                       <span className="text-ink-soft">{e.title}</span> <span className="meta">({e.publisher})</span>
                     </li>
                   ))}

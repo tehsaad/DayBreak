@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { supabaseConfig } from "../env";
 import { SOURCE_BY_ID } from "../news/sources";
+import { hydratePreferences } from "../preferences";
 import type { TopicId } from "../topics";
 import type {
   Article,
@@ -126,20 +127,66 @@ const EDITION_SUMMARY_COLUMNS = "id,edition_date,revision,created_at,content_mod
 export class SupabaseStore implements Store {
   readonly kind = "supabase" as const;
 
+  /**
+   * @param user     client carrying the reader's session (RLS applies)
+   * @param service  service-role client, or null when SUPABASE_SERVICE_ROLE_KEY is not set
+   * @param fallbackNews  where shared news lives when there is no service-role key (per-instance cache)
+   */
   constructor(
     private readonly user: SupabaseClient,
-    private readonly service: SupabaseClient,
+    private readonly service: SupabaseClient | null,
+    private readonly fallbackNews: Store,
   ) {}
+
+  /** True when shared news is stored in Postgres (service-role key configured). */
+  get sharedNewsInDatabase(): boolean {
+    return this.service !== null;
+  }
+
+  private get svc(): SupabaseClient {
+    if (!this.service) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured");
+    return this.service;
+  }
+
+  // ---- shared news: Postgres with the service role, otherwise the per-instance cache ----
+
+  upsertArticles(articles: Article[]) {
+    return this.service ? this.pg_upsertArticles(articles) : this.fallbackNews.upsertArticles(articles);
+  }
+  listArticles(query: ArticleQuery) {
+    return this.service ? this.pg_listArticles(query) : this.fallbackNews.listArticles(query);
+  }
+  getArticles(ids: string[]) {
+    return this.service ? this.pg_getArticles(ids) : this.fallbackNews.getArticles(ids);
+  }
+  getSourceHealth() {
+    return this.service ? this.pg_getSourceHealth() : this.fallbackNews.getSourceHealth();
+  }
+  saveSourceHealth(health: SourceHealth[]) {
+    return this.service ? this.pg_saveSourceHealth(health) : this.fallbackNews.saveSourceHealth(health);
+  }
+  recordIngestionRun(run: IngestionRun) {
+    return this.service ? this.pg_recordIngestionRun(run) : this.fallbackNews.recordIngestionRun(run);
+  }
+  lastIngestionRun() {
+    return this.service ? this.pg_lastIngestionRun() : this.fallbackNews.lastIngestionRun();
+  }
+  getCachedSummaries(ids: string[], model: string) {
+    return this.service ? this.pg_getCachedSummaries(ids, model) : this.fallbackNews.getCachedSummaries(ids, model);
+  }
+  saveCachedSummaries(items: CachedSummary[]) {
+    return this.service ? this.pg_saveCachedSummaries(items) : this.fallbackNews.saveCachedSummaries(items);
+  }
 
   // ---- shared news ---------------------------------------------------------------
 
-  async upsertArticles(articles: Article[]): Promise<number> {
+  private async pg_upsertArticles(articles: Article[]): Promise<number> {
     if (articles.length === 0) return 0;
     await this.ensureSources();
     let inserted = 0;
     for (let i = 0; i < articles.length; i += 500) {
       const chunk = articles.slice(i, i + 500);
-      const existing = check(await this.service.from("articles").select("id").in("id", chunk.map((a) => a.id)), "article lookup") as Row[];
+      const existing = check(await this.svc.from("articles").select("id").in("id", chunk.map((a) => a.id)), "article lookup") as Row[];
       const known = new Set(existing.map((r) => r.id as string));
       inserted += chunk.filter((a) => !known.has(a.id)).length;
       // Keep the first collected_at for existing rows by excluding it from updates of known ids.
@@ -148,7 +195,7 @@ export class SupabaseStore implements Store {
         if (known.has(a.id)) delete row.collected_at;
         return row;
       });
-      check(await this.service.from("articles").upsert(rows, { onConflict: "id" }), "article upsert");
+      check(await this.svc.from("articles").upsert(rows, { onConflict: "id" }), "article upsert");
     }
     return inserted;
   }
@@ -166,12 +213,12 @@ export class SupabaseStore implements Store {
       region: s.region,
       status: s.status,
     }));
-    check(await this.service.from("sources").upsert(rows, { onConflict: "id", ignoreDuplicates: false }), "source registry sync");
+    check(await this.svc.from("sources").upsert(rows, { onConflict: "id", ignoreDuplicates: false }), "source registry sync");
     this.sourcesEnsured = true;
   }
 
-  async listArticles(query: ArticleQuery): Promise<Article[]> {
-    let q = this.service.from("articles").select(ARTICLE_COLUMNS);
+  private async pg_listArticles(query: ArticleQuery): Promise<Article[]> {
+    let q = this.svc.from("articles").select(ARTICLE_COLUMNS);
     if (query.sinceHours) {
       const since = new Date(Date.now() - query.sinceHours * 3600_000).toISOString();
       q = q.or(`published_at.gte.${since},and(published_at.is.null,collected_at.gte.${since})`);
@@ -183,14 +230,14 @@ export class SupabaseStore implements Store {
     return data.map(rowToArticle);
   }
 
-  async getArticles(ids: string[]): Promise<Article[]> {
+  private async pg_getArticles(ids: string[]): Promise<Article[]> {
     if (ids.length === 0) return [];
-    const data = check(await this.service.from("articles").select(ARTICLE_COLUMNS).in("id", ids), "article get") as Row[];
+    const data = check(await this.svc.from("articles").select(ARTICLE_COLUMNS).in("id", ids), "article get") as Row[];
     return data.map(rowToArticle);
   }
 
-  async getSourceHealth(): Promise<SourceHealth[]> {
-    const data = check(await this.service.from("sources").select("*"), "source health") as Row[];
+  private async pg_getSourceHealth(): Promise<SourceHealth[]> {
+    const data = check(await this.svc.from("sources").select("*"), "source health") as Row[];
     return data.map((r) => ({
       sourceId: r.id as string,
       lastFetchedAt: (r.last_fetched_at as string) ?? null,
@@ -204,11 +251,11 @@ export class SupabaseStore implements Store {
     }));
   }
 
-  async saveSourceHealth(health: SourceHealth[]): Promise<void> {
+  private async pg_saveSourceHealth(health: SourceHealth[]): Promise<void> {
     await this.ensureSources();
     for (const h of health) {
       check(
-        await this.service
+        await this.svc
           .from("sources")
           .update({
             last_fetched_at: h.lastFetchedAt,
@@ -227,9 +274,9 @@ export class SupabaseStore implements Store {
     }
   }
 
-  async recordIngestionRun(run: IngestionRun): Promise<void> {
+  private async pg_recordIngestionRun(run: IngestionRun): Promise<void> {
     check(
-      await this.service.from("ingestion_runs").insert({
+      await this.svc.from("ingestion_runs").insert({
         id: run.id,
         started_at: run.startedAt,
         finished_at: run.finishedAt,
@@ -241,8 +288,8 @@ export class SupabaseStore implements Store {
     );
   }
 
-  async lastIngestionRun(): Promise<IngestionRun | null> {
-    const data = check(await this.service.from("ingestion_runs").select("*").order("finished_at", { ascending: false }).limit(1), "ingestion run") as Row[];
+  private async pg_lastIngestionRun(): Promise<IngestionRun | null> {
+    const data = check(await this.svc.from("ingestion_runs").select("*").order("finished_at", { ascending: false }).limit(1), "ingestion run") as Row[];
     const r = data[0];
     if (!r) return null;
     return {
@@ -255,25 +302,25 @@ export class SupabaseStore implements Store {
     };
   }
 
-  async getCachedSummaries(ids: string[], model: string): Promise<CachedSummary[]> {
+  private async pg_getCachedSummaries(ids: string[], model: string): Promise<CachedSummary[]> {
     if (ids.length === 0) return [];
-    const data = check(await this.service.from("article_summaries").select("*").eq("model", model).in("article_id", ids), "summary cache") as Row[];
+    const data = check(await this.svc.from("article_summaries").select("*").eq("model", model).in("article_id", ids), "summary cache") as Row[];
     return data.map((r) => ({ articleId: r.article_id as string, summary: r.summary as string, model: r.model as string, createdAt: r.created_at as string }));
   }
 
-  async saveCachedSummaries(items: CachedSummary[]): Promise<void> {
+  private async pg_saveCachedSummaries(items: CachedSummary[]): Promise<void> {
     if (items.length === 0) return;
     // Only cache summaries for articles that exist in the shared table (FK).
-    const known = new Set(((check(await this.service.from("articles").select("id").in("id", items.map((i) => i.articleId)), "article lookup") as Row[]) ?? []).map((r) => r.id as string));
+    const known = new Set(((check(await this.svc.from("articles").select("id").in("id", items.map((i) => i.articleId)), "article lookup") as Row[]) ?? []).map((r) => r.id as string));
     const rows = items.filter((i) => known.has(i.articleId)).map((i) => ({ article_id: i.articleId, model: i.model, summary: i.summary, created_at: i.createdAt }));
-    if (rows.length) check(await this.service.from("article_summaries").upsert(rows, { onConflict: "article_id,model" }), "summary cache save");
+    if (rows.length) check(await this.svc.from("article_summaries").upsert(rows, { onConflict: "article_id,model" }), "summary cache save");
   }
 
   // ---- reader data (RLS-bound client) ------------------------------------------------
 
   async getPreferences(userId: string): Promise<ReaderPreferences | null> {
     const data = check(await this.user.from("reader_preferences").select("prefs").eq("user_id", userId).maybeSingle(), "preferences") as Row | null;
-    return (data?.prefs as ReaderPreferences) ?? null;
+    return hydratePreferences((data?.prefs as ReaderPreferences) ?? null);
   }
 
   async savePreferences(userId: string, prefs: ReaderPreferences): Promise<void> {
@@ -462,8 +509,10 @@ export class SupabaseStore implements Store {
   }
 
   async listReadersForPreparation(limit: number): Promise<string[]> {
+    // Listing every reader requires the service role; without it, cron preparation is skipped.
+    if (!this.service) return [];
     const data = check(
-      await this.service.from("reader_preferences").select("user_id").not("onboarded_at", "is", null).order("updated_at", { ascending: false }).limit(limit),
+      await this.svc.from("reader_preferences").select("user_id").not("onboarded_at", "is", null).order("updated_at", { ascending: false }).limit(limit),
       "reader list",
     ) as Row[];
     return data.map((r) => r.user_id as string);
@@ -479,19 +528,22 @@ export class SupabaseStore implements Store {
 
 let serviceClient: SupabaseClient | null = null;
 
-export function serviceSupabase(): SupabaseClient {
+/** Service-role client, or null when SUPABASE_SERVICE_ROLE_KEY is not configured. Server-only. */
+export function serviceSupabase(): SupabaseClient | null {
   const cfg = supabaseConfig();
-  if (!cfg) throw new Error("Supabase is not configured");
+  if (!cfg?.serviceRoleKey) return null;
   serviceClient ??= createClient(cfg.url, cfg.serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
   return serviceClient;
 }
 
 /** Service-role store (cron, ingestion scripts). Reader methods then act with service rights. */
-export function createServiceStore(): SupabaseStore {
+export function createServiceStore(fallbackNews: Store): SupabaseStore {
   const svc = serviceSupabase();
-  return new SupabaseStore(svc, svc);
+  if (!svc) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured");
+  return new SupabaseStore(svc, svc, fallbackNews);
 }
 
-export function createReaderStore(userClient: SupabaseClient): SupabaseStore {
-  return new SupabaseStore(userClient, serviceSupabase());
+/** Store for one signed-in reader: their data through their own session (RLS). */
+export function createReaderStore(userClient: SupabaseClient, fallbackNews: Store): SupabaseStore {
+  return new SupabaseStore(userClient, serviceSupabase(), fallbackNews);
 }

@@ -23,7 +23,7 @@ export default async function ArchivePage() {
         <div className="mt-10 border border-dashed border-rule p-8 text-center">
           <p className="font-display text-2xl">No editions yet.</p>
           <p className="mt-2 text-ink-soft">Your first paper will appear here once it&apos;s printed.</p>
-          <Link href="/paper" className="btn btn-primary mt-5">Go to today&apos;s paper</Link>
+          <Link href="/newspaper" className="btn btn-primary mt-5">Go to today&apos;s paper</Link>
         </div>
       ) : (
         [...byMonth.entries()].map(([month, list]) => (
@@ -36,7 +36,7 @@ export default async function ArchivePage() {
                     <p className="font-semibold">{formatEditionDate(e.editionDate, "short")}</p>
                     <p className="text-muted">Edition {e.revision} · {e.storyCount} stories{e.contentMode === "sample" ? " · sample" : ""}</p>
                   </div>
-                  <Link href={`/paper/${e.id}`} className="headline flex-1 text-xl hover:text-accent hover:underline">
+                  <Link href={`/newspaper/${e.id}`} className="headline flex-1 text-xl hover:text-accent hover:underline">
                     {e.leadTitle || "Untitled edition"}
                   </Link>
                   <a href={`/api/editions/${e.id}/pdf`} download className="btn btn-ghost !py-1.5 self-start sm:self-auto">

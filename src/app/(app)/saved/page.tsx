@@ -17,7 +17,7 @@ export default async function SavedPage() {
         <div className="mt-10 border border-dashed border-rule p-8 text-center">
           <p className="font-display text-2xl">Nothing saved yet.</p>
           <p className="mt-2 text-ink-soft">Use “Save” on any story in your paper.</p>
-          <Link href="/paper" className="btn btn-primary mt-5">Open today&apos;s paper</Link>
+          <Link href="/newspaper" className="btn btn-primary mt-5">Open today&apos;s paper</Link>
         </div>
       ) : (
         <SavedList bookmarks={bookmarks} timeZone={prefs.timezone} />

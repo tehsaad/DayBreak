@@ -37,7 +37,7 @@ export function GenerateButton({ label = "Generate my paper" }: { label?: string
       setError(null);
       try {
         const res = await api<GenerateResponse>("/api/editions", { body: { mode: "ensure" } });
-        router.push(`/paper/${res.editionId}`);
+        router.push(`/newspaper/${res.editionId}`);
         router.refresh();
       } catch (err) {
         if (err instanceof ApiError && err.status === 409 && typeof err.data.next === "string") router.push(err.data.next);
@@ -66,7 +66,7 @@ export function RegenerateButton() {
       setError(null);
       try {
         const res = await api<GenerateResponse>("/api/editions", { body: { mode: "regenerate" } });
-        router.push(`/paper/${res.editionId}`);
+        router.push(`/newspaper/${res.editionId}`);
         router.refresh();
       } catch (err) {
         setError(err instanceof ApiError ? err.message : "Something went wrong.");

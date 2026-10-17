@@ -89,7 +89,7 @@ export function PaperView({ edition, savedIds, isToday, isLatest, storageMode }:
         {!isToday ? (
           <p role="note" className="flex flex-wrap items-center justify-between gap-2 border border-rule bg-paper-card px-3 py-2 text-ink-soft">
             <span>You&apos;re reading the saved edition of {formatEditionDate(edition.editionDate)}. It is shown exactly as it was published.</span>
-            {isLatest ? <Link href="/paper?new=1" className="font-semibold text-accent underline">Prepare today&apos;s paper</Link> : null}
+            {isLatest ? <Link href="/newspaper?new=1" className="font-semibold text-accent underline">Prepare today&apos;s paper</Link> : null}
           </p>
         ) : null}
         {edition.ai.note && !edition.ai.used ? <p className="text-xs text-muted">{edition.ai.note}</p> : null}

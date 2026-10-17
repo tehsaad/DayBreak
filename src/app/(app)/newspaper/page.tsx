@@ -10,8 +10,8 @@ import { storageMode } from "@/lib/env";
 export const metadata: Metadata = { title: "Today's paper" };
 export const dynamic = "force-dynamic";
 
-export default async function PaperPage({ searchParams }: PageProps<"/paper">) {
-  const { reader, prefs } = await requireReader("/paper");
+export default async function PaperPage({ searchParams }: PageProps<"/newspaper">) {
+  const { reader, prefs } = await requireReader("/newspaper");
   const sp = await searchParams;
   const today = editionDateFor(prefs.timezone);
   const latest = await reader.store.latestEdition(reader.userId);
@@ -36,7 +36,7 @@ export default async function PaperPage({ searchParams }: PageProps<"/paper">) {
       {latest ? (
         <p className="mt-10 font-sans text-sm text-muted">
           Or read your last edition, from{" "}
-          <Link className="font-semibold text-ink underline" href={`/paper/${latest.id}`}>{formatEditionDate(latest.editionDate)}</Link>.
+          <Link className="font-semibold text-ink underline" href={`/newspaper/${latest.id}`}>{formatEditionDate(latest.editionDate)}</Link>.
         </p>
       ) : null}
     </div>

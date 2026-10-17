@@ -24,6 +24,8 @@ export const PreferencesInput = z
     depth: z.enum(["brief", "balanced", "deep"]).default("balanced"),
     mutedTopics: z.array(topicId).max(TOPIC_IDS.length).default([]),
     excludedSources: z.array(z.string().max(60)).max(60).default([]),
+    preferredPublishers: z.array(z.string().max(60)).max(30).default([]),
+    language: z.literal("en").default("en"),
     mutedKeywords: z.array(z.string().trim().min(2).max(40)).max(30).default([]),
     readingMinutes: z.number().int().min(3).max(60).default(15),
     timezone: z.string().max(64).default("UTC"),
@@ -32,8 +34,12 @@ export const PreferencesInput = z
 
 export type PreferencesInput = z.input<typeof PreferencesInput>;
 
-/** Validate, normalise and make internally consistent. */
-export function normalizePreferences(raw: unknown, previous?: ReaderPreferences | null): ReaderPreferences {
+/**
+ * Validate, normalise and make internally consistent.
+ * `complete: false` saves an onboarding draft without marking the reader as onboarded.
+ */
+export function normalizePreferences(raw: unknown, previous?: ReaderPreferences | null, opts: { complete?: boolean } = {}): ReaderPreferences {
+  const complete = opts.complete ?? true;
   const p = PreferencesInput.parse(raw);
   const interests = [...new Set(p.interests.filter((i) => INTEREST_BY_ID[i]))];
   const muted = [...new Set(p.mutedTopics)];
@@ -50,10 +56,13 @@ export function normalizePreferences(raw: unknown, previous?: ReaderPreferences 
     depth: p.depth,
     mutedTopics: muted,
     excludedSources: [...new Set(p.excludedSources)],
+    // A publisher can't be both trusted and excluded; exclusion wins.
+    preferredPublishers: [...new Set(p.preferredPublishers)].filter((id) => !p.excludedSources.includes(id)),
+    language: "en",
     mutedKeywords: [...new Set(p.mutedKeywords.map((k) => k.toLowerCase()))],
     readingMinutes: p.readingMinutes,
     timezone: validTimezone(p.timezone) ? p.timezone : "UTC",
-    onboardedAt: previous?.onboardedAt ?? now,
+    onboardedAt: previous?.onboardedAt ?? (complete ? now : null),
     updatedAt: now,
   };
 }
@@ -67,12 +76,20 @@ export const DEFAULT_PREFERENCES: ReaderPreferences = {
   depth: "balanced",
   mutedTopics: [],
   excludedSources: [],
+  preferredPublishers: [],
   mutedKeywords: [],
+  language: "en",
   readingMinutes: 15,
   timezone: "UTC",
   onboardedAt: null,
   updatedAt: null,
 };
+
+/** Fill fields added after a profile was first saved, so older stored profiles keep working. */
+export function hydratePreferences(p: ReaderPreferences | null): ReaderPreferences | null {
+  if (!p) return null;
+  return { ...DEFAULT_PREFERENCES, ...p, preferredPublishers: p.preferredPublishers ?? [], language: "en" };
+}
 
 /** YYYY-MM-DD of `now` in the reader's time zone. */
 export function editionDateFor(timezone: string, now: Date = new Date()): string {

@@ -10,7 +10,7 @@ import type { Depth, ReaderPreferences } from "@/lib/types";
 
 export type Draft = Pick<
   ReaderPreferences,
-  "displayName" | "sections" | "interests" | "region" | "localBalance" | "depth" | "mutedTopics" | "excludedSources" | "mutedKeywords" | "readingMinutes" | "timezone"
+  "displayName" | "sections" | "interests" | "region" | "localBalance" | "depth" | "mutedTopics" | "excludedSources" | "preferredPublishers" | "mutedKeywords" | "readingMinutes" | "timezone"
 >;
 
 export function draftFrom(p: ReaderPreferences | null): Draft {
@@ -23,6 +23,7 @@ export function draftFrom(p: ReaderPreferences | null): Draft {
     depth: p?.depth ?? "balanced",
     mutedTopics: p?.mutedTopics ?? [],
     excludedSources: p?.excludedSources ?? [],
+    preferredPublishers: p?.preferredPublishers ?? [],
     mutedKeywords: p?.mutedKeywords ?? [],
     readingMinutes: p?.readingMinutes ?? 15,
     timezone: p?.timezone ?? "UTC",
@@ -124,6 +125,10 @@ export function RegionField({ draft, set }: { draft: Draft; set: (d: Partial<Dra
           <option value={GLOBAL_REGION}>Nowhere in particular — international only</option>
         </select>
       </label>
+      <div>
+        <span className="field-label">Edition language</span>
+        <p className="mt-1.5 font-sans text-sm text-ink-soft">English. Every DAYBREAK source publishes in English today, so other languages aren&apos;t offered yet.</p>
+      </div>
       {draft.region !== GLOBAL_REGION ? (
         <label className="block">
           <span className="field-label">Local versus international coverage</span>
@@ -205,10 +210,33 @@ export function FineTuneField({ draft, set }: { draft: Draft; set: (d: Partial<D
         </div>
       </fieldset>
       <fieldset>
+        <legend className="field-label">Publishers you trust (optional)</legend>
+        <p className="mt-1 font-sans text-xs text-muted">Their stories get a small, explained boost. They never crowd out other sources.</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {pubs.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="chip"
+              aria-pressed={draft.preferredPublishers.includes(p.id)}
+              onClick={() => set({ preferredPublishers: toggle(draft.preferredPublishers, p.id), excludedSources: draft.excludedSources.filter((x) => x !== p.id) })}
+            >
+              {p.publisher}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
         <legend className="field-label">Leave out these publishers</legend>
         <div className="mt-2 flex flex-wrap gap-2">
           {pubs.map((p) => (
-            <button key={p.id} type="button" className="chip" aria-pressed={draft.excludedSources.includes(p.id)} onClick={() => set({ excludedSources: toggle(draft.excludedSources, p.id) })}>
+            <button
+              key={p.id}
+              type="button"
+              className="chip"
+              aria-pressed={draft.excludedSources.includes(p.id)}
+              onClick={() => set({ excludedSources: toggle(draft.excludedSources, p.id), preferredPublishers: draft.preferredPublishers.filter((x) => x !== p.id) })}
+            >
               {p.publisher}
             </button>
           ))}
@@ -236,8 +264,9 @@ export function FineTuneField({ draft, set }: { draft: Draft; set: (d: Partial<D
   );
 }
 
-export async function savePreferences(draft: Draft) {
-  return api<{ preferences: ReaderPreferences }>("/api/preferences", { method: "PUT", body: draft });
+/** Save preferences. `complete: false` keeps an onboarding draft without finishing onboarding. */
+export async function savePreferences(draft: Draft, complete = true) {
+  return api<{ preferences: ReaderPreferences }>("/api/preferences", { method: "PUT", body: { ...draft, complete } });
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +279,7 @@ const STEPS = [
   { id: "interests", title: "Anything in particular?", lede: "Narrower interests sharpen the ranking. Optional, but it makes a real difference." },
   { id: "region", title: "Where in the world are you?", lede: "Used only to weigh local against international news." },
   { id: "depth", title: "How do you like to read?", lede: "Choose a depth and how much time you have." },
-  { id: "finetune", title: "Anything to leave out?", lede: "Optional. Muted topics, publishers and keywords never appear." },
+  { id: "finetune", title: "Sources and limits", lede: "Optional. Pick publishers you trust; muted topics, publishers and keywords never appear." },
   { id: "review", title: "Ready to print", lede: "Here's the paper you've designed." },
 ] as const;
 
@@ -263,8 +292,10 @@ export function OnboardingWizard({ initial, mode }: { initial: ReaderPreferences
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return tz ? { ...d, timezone: tz, region: tz === "Asia/Karachi" ? "PK" : d.region } : d;
   });
-  const [step, setStep] = useState(0);
+  const resumed = Boolean(initial && !initial.onboardedAt);
+  const [step, setStepState] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [savedNote, setSavedNote] = useState<string | null>(resumed ? "Welcome back — we kept the choices you'd already made." : null);
   const [phase, setPhase] = useState<"idle" | "saving" | "printing">("idle");
   const [, start] = useTransition();
   const set = (d: Partial<Draft>) => setDraft((prev) => ({ ...prev, ...d }));
@@ -272,18 +303,35 @@ export function OnboardingWizard({ initial, mode }: { initial: ReaderPreferences
   const current = STEPS[step]!;
   const canContinue = current.id !== "sections" || draft.sections.length > 0;
 
+  // Moving between steps saves a draft, so a reader who leaves mid-way doesn't lose their choices.
+  const setStep = (next: number | ((s: number) => number)) => {
+    const target = typeof next === "function" ? next(step) : next;
+    if (target === step) return;
+    setStepState(target);
+    if (draft.sections.length > 0) {
+      savePreferences(draft, false)
+        .then(() => setSavedNote("Progress saved."))
+        .catch(() => setSavedNote(null));
+    }
+  };
+
   const finish = () =>
     start(async () => {
       setError(null);
       try {
         setPhase("saving");
-        await savePreferences(draft);
+        await savePreferences(draft, true);
         setPhase("printing");
         const res = await api<{ editionId: string }>("/api/editions", { body: { mode: "ensure" } });
-        router.push(`/paper/${res.editionId}`);
+        router.push(`/newspaper/${res.editionId}`);
         router.refresh();
       } catch (err) {
         setPhase("idle");
+        if (err instanceof ApiError && err.status === 422) {
+          // Saved, but nothing matched today: send the reader somewhere useful instead of a broken page.
+          setError(`${err.message} Your preferences are saved — you can browse Explore or try again shortly.`);
+          return;
+        }
         setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
       }
     });
@@ -331,7 +379,13 @@ export function OnboardingWizard({ initial, mode }: { initial: ReaderPreferences
         </div>
       </div>
 
-      {error ? <p role="alert" className="mt-6 font-sans text-sm text-accent">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="mt-6 font-sans text-sm text-accent">
+          {error}{" "}
+          {phase === "idle" && error.includes("Explore") ? <a className="font-semibold underline" href="/explore">Open Explore</a> : null}
+        </p>
+      ) : null}
+      {savedNote && !error ? <p className="mt-6 font-sans text-xs text-forest" aria-live="polite">{savedNote}</p> : null}
 
       <div className="mt-10 flex items-center justify-between border-t border-rule pt-5">
         <button type="button" className="btn btn-ghost" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0 || phase !== "idle"}>
@@ -348,14 +402,25 @@ export function OnboardingWizard({ initial, mode }: { initial: ReaderPreferences
             )}
           </button>
         ) : (
-          <button type="button" className="btn btn-primary" onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))} disabled={!canContinue}>
-            {current.id === "interests" || current.id === "finetune" ? "Continue" : "Next"} <ArrowRight size={16} aria-hidden />
-          </button>
+          <div className="flex items-center gap-3">
+            {current.id === "interests" || current.id === "finetune" ? (
+              <button type="button" className="font-sans text-sm text-muted underline-offset-2 hover:text-ink hover:underline" onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}>
+                Skip for now
+              </button>
+            ) : null}
+            <button type="button" className="btn btn-primary" onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))} disabled={!canContinue}>
+              {current.id === "interests" || current.id === "finetune" ? "Continue" : "Next"} <ArrowRight size={16} aria-hidden />
+            </button>
+          </div>
         )}
       </div>
       {phase === "printing" ? <p className="mt-3 text-right font-sans text-xs text-muted" aria-live="polite">The first edition can take up to half a minute while feeds are fetched.</p> : null}
     </div>
   );
+}
+
+function pubName(id: string): string {
+  return publishers().find((p) => p.id === id)?.publisher ?? id;
 }
 
 function Review({ draft, onEdit }: { draft: Draft; onEdit: (step: number) => void }) {
@@ -369,7 +434,8 @@ function Review({ draft, onEdit }: { draft: Draft; onEdit: (step: number) => voi
       step: 3,
     },
     { label: "Depth", value: `${draft.depth[0]!.toUpperCase()}${draft.depth.slice(1)} · ${draft.readingMinutes} min`, step: 4 },
-    { label: "Left out", value: [...draft.mutedTopics.map((t) => TOPICS[t as TopicId].short), ...draft.excludedSources, ...draft.mutedKeywords].join(", ") || "Nothing", step: 5 },
+    { label: "Trusted", value: draft.preferredPublishers.map(pubName).join(", ") || "No preference", step: 5 },
+    { label: "Left out", value: [...draft.mutedTopics.map((t) => TOPICS[t as TopicId].short), ...draft.excludedSources.map(pubName), ...draft.mutedKeywords].join(", ") || "Nothing", step: 5 },
   ];
   return (
     <dl className="divide-y divide-rule border-y border-rule">

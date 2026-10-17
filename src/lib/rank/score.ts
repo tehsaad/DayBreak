@@ -42,6 +42,8 @@ export const WEIGHTS = {
   exposure: 2.5,
   /** Penalty: a secondary topic is muted. */
   mutedSecondary: 1.5,
+  /** Story from a publisher the reader marked as trusted. */
+  preferredPublisher: 0.75,
 } as const;
 
 export const FRESHNESS_HALF_LIFE_HOURS = 18;
@@ -160,6 +162,8 @@ export function scoreArticle(article: Article, ctx: ScoreContext): ScoredArticle
   b.exposure = -WEIGHTS.exposure * exposure;
 
   b.mutedSecondary = secondary.some((t) => prefs.mutedTopics.includes(t)) ? -WEIGHTS.mutedSecondary : 0;
+  const trusted = (prefs.preferredPublishers ?? []).includes(publisherId(article.publisher));
+  b.preferredPublisher = trusted ? WEIGHTS.preferredPublisher : 0;
 
   for (const k of Object.keys(b)) b[k] = r3(b[k]!);
   const score = r3(Object.values(b).reduce((s, v) => s + v, 0));
@@ -195,6 +199,7 @@ export function buildReasons(
     out.push({ code: "learned", text: `You've been engaging with ${TOPICS[primary].label.toLowerCase()} stories.` });
   }
   if (followedTopic && !interest && out.length === 0) out.push({ code: "topic", text: `From ${TOPICS[followedTopic].label}, a section you follow.` });
+  if ((b.preferredPublisher ?? 0) > 0 && out.length < 2) out.push({ code: "publisher", text: `From ${article.publisher}, a publisher you trust.` });
   if (info.coverage === 2 && out.length < 2) out.push({ code: "coverage", text: "Reported by more than one publisher today." });
   return out.slice(0, 2);
 }

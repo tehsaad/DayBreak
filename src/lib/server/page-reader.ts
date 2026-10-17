@@ -8,6 +8,7 @@ export async function requireReader(next: string): Promise<{ reader: ReaderConte
   const reader = await getReader();
   if (!reader) redirect(storageMode() === "supabase" ? `/login?next=${encodeURIComponent(next)}` : "/onboarding");
   const prefs = await reader.store.getPreferences(reader.userId);
-  if (!prefs) redirect("/onboarding");
+  // First-time readers finish onboarding before anything else.
+  if (!prefs?.onboardedAt) redirect("/onboarding");
   return { reader, prefs };
 }

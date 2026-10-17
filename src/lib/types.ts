@@ -15,7 +15,11 @@ export interface ReaderPreferences {
   depth: Depth;
   mutedTopics: TopicId[];
   excludedSources: string[];
+  /** Publisher ids the reader trusts; stories from them get a small, explained boost. */
+  preferredPublishers: string[];
   mutedKeywords: string[];
+  /** Edition language. Every configured source is English today, so this is "en". */
+  language: "en";
   /** Target reading time in minutes. */
   readingMinutes: number;
   /** IANA time zone, used to decide which day an edition belongs to. */
@@ -68,6 +72,7 @@ export interface ReasonItem {
     | "coverage"
     | "major"
     | "broaden"
+    | "publisher"
     | "fresh";
   text: string;
 }

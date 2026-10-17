@@ -45,7 +45,7 @@ export async function getReader(): Promise<ReaderContext | null> {
     const { data, error } = await supabase.auth.getUser();
     if (error || !data.user) return null;
     const { createReaderStore } = await import("../store/supabase-store");
-    return { mode: "supabase", userId: data.user.id, email: data.user.email ?? null, store: createReaderStore(supabase) };
+    return { mode: "supabase", userId: data.user.id, email: data.user.email ?? null, store: createReaderStore(supabase, getFileStore()) };
   }
   const jar = await cookies();
   const id = jar.get(DEMO_COOKIE)?.value;

@@ -47,7 +47,7 @@ test("reader journey: onboard, read, give feedback, regenerate, download PDF, op
   await page.getByRole("button", { name: /Print my first paper/ }).click();
 
   // First edition
-  await page.waitForURL(/\/paper\/[0-9a-f-]{36}$/, { timeout: 90_000 });
+  await page.waitForURL(/\/newspaper\/[0-9a-f-]{36}$/, { timeout: 90_000 });
   const firstUrl = page.url();
   await expect(page.getByText("Hamza's morning paper")).toBeVisible();
   const lead = page.locator("article").first();
@@ -80,7 +80,7 @@ test("reader journey: onboard, read, give feedback, regenerate, download PDF, op
   // Regenerate: new revision, the rejected lead is gone from the top
   const regen = page.getByRole("button", { name: /Regenerate/ });
   await regen.click();
-  await page.waitForURL((u) => u.toString() !== firstUrl && /\/paper\/[0-9a-f-]{36}$/.test(u.pathname), { timeout: 90_000 }).catch(async () => {
+  await page.waitForURL((u) => u.toString() !== firstUrl && /\/newspaper\/[0-9a-f-]{36}$/.test(u.pathname), { timeout: 90_000 }).catch(async () => {
     // Cooldown may apply; wait it out once.
     await page.waitForTimeout(46_000);
     await regen.click();
@@ -153,7 +153,7 @@ test("mobile layout has no horizontal scroll @mobile", async ({ page }) => {
   await page.request.put("/api/preferences", { data: { displayName: "Mobile", sections: ["pakistan", "education"], region: "PK", timezone: "Asia/Karachi" }, headers: { origin } });
   const gen = await page.request.post("/api/editions", { data: { mode: "ensure" }, headers: { origin } });
   const { editionId } = await gen.json();
-  for (const path of [`/paper/${editionId}`, "/onboarding", "/settings", "/archive", "/explore"]) {
+  for (const path of [`/newspaper/${editionId}`, "/onboarding", "/settings", "/archive", "/explore"]) {
     await page.goto(path);
     expect(await overflow(), path).toBeLessThanOrEqual(1);
   }

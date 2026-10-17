@@ -7,15 +7,15 @@ import { storageMode } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata({ params }: PageProps<"/paper/[id]">): Promise<Metadata> {
+export async function generateMetadata({ params }: PageProps<"/newspaper/[id]">): Promise<Metadata> {
   const { id } = await params;
   return { title: `Edition ${id.slice(0, 8)}`, robots: { index: false } };
 }
 
 /** A saved edition, rendered exactly as stored — never regenerated. */
-export default async function EditionPage({ params }: PageProps<"/paper/[id]">) {
+export default async function EditionPage({ params }: PageProps<"/newspaper/[id]">) {
   const { id } = await params;
-  const { reader, prefs } = await requireReader(`/paper/${id}`);
+  const { reader, prefs } = await requireReader(`/newspaper/${id}`);
   const edition = await reader.store.getEdition(reader.userId, id);
   if (!edition) notFound();
   const [latest, bookmarks] = await Promise.all([reader.store.latestEdition(reader.userId), reader.store.listBookmarks(reader.userId)]);

@@ -6,10 +6,11 @@ import { useState } from "react";
 import { Menu, X } from "lucide-react";
 
 const LINKS = [
-  { href: "/paper", label: "Today" },
+  { href: "/newspaper", label: "Newspaper" },
+  { href: "/explore", label: "Explore" },
+  { href: "/search", label: "Search" },
   { href: "/archive", label: "Archive" },
   { href: "/saved", label: "Saved" },
-  { href: "/explore", label: "Explore" },
   { href: "/settings", label: "Settings" },
 ];
 

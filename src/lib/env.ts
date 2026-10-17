@@ -83,16 +83,28 @@ export function llmStatusNote(): string {
 
 export interface SupabaseConfig {
   url: string;
+  /** Anon or publishable key: public by design, restricted by RLS. */
   anonKey: string;
-  serviceRoleKey: string;
+  /** Service-role / secret key: server-only. Null when not configured. */
+  serviceRoleKey: string | null;
 }
 
 export function supabaseConfig(): SupabaseConfig | null {
   const url = value("NEXT_PUBLIC_SUPABASE_URL");
   const anonKey = value("NEXT_PUBLIC_SUPABASE_ANON_KEY") ?? value("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
   const serviceRoleKey = value("SUPABASE_SERVICE_ROLE_KEY") ?? value("SUPABASE_SECRET_KEY");
-  if (!url || !anonKey || !serviceRoleKey) return null;
-  return { url, anonKey, serviceRoleKey };
+  if (!url || !anonKey) return null;
+  return { url, anonKey, serviceRoleKey: serviceRoleKey ?? null };
+}
+
+/**
+ * Where the shared news pool lives. Reader data is always in Supabase in Supabase mode; shared
+ * news needs the service-role key for Postgres and otherwise uses a per-instance cache.
+ */
+export function sharedNewsStorage(): "supabase" | "instance-cache" | "file" {
+  const cfg = supabaseConfig();
+  if (!cfg) return "file";
+  return cfg.serviceRoleKey ? "supabase" : "instance-cache";
 }
 
 export type StorageMode = "supabase" | "demo";

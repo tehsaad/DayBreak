@@ -15,6 +15,14 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/editions/[id]/pdf": ["./assets/fonts/**/*"],
   },
+  // /paper was the reader's address before /newspaper; keep old links working.
+  async redirects() {
+    return [
+      { source: "/paper", destination: "/newspaper", permanent: true },
+      { source: "/paper/:id", destination: "/newspaper/:id", permanent: true },
+      { source: "/signup", destination: "/login?mode=signup", permanent: false },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
