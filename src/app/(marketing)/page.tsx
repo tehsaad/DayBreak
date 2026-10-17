@@ -86,7 +86,7 @@ async function FrontPage() {
         <span>Front page preview</span>
         <span>{data.isSample ? "Labelled sample stories" : "Ranked for a general reader"}</span>
       </div>
-      <div className="mt-4 grid gap-5 md:grid-cols-[1.4fr_1fr]">
+      <div className="mt-4 grid gap-5 md:grid-cols-2">
         <StoryCard a={lead} delay={150} big />
         <div className="space-y-4 md:border-l md:border-rule md:pl-5">
           {rest.slice(0, 4).map((a, i) => (

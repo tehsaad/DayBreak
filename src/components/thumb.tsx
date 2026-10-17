@@ -35,7 +35,8 @@ export function Thumb({
   const [failed, setFailed] = useState(false);
   const show = url && !failed;
   return (
-    <div className={`relative shrink-0 overflow-hidden bg-paper-deep ${SIZES[size]} ${className}`} data-thumb={show ? "image" : "placeholder"}>
+    // self-start: inside flex rows the box would otherwise stretch to the row's height and lose its aspect ratio.
+    <div className={`relative shrink-0 self-start overflow-hidden bg-paper-deep ${SIZES[size]} ${className}`} data-thumb={show ? "image" : "placeholder"}>
       {show ? (
         // Publisher images come from many feed hosts; rendered directly (never proxied or re-hosted).
         // eslint-disable-next-line @next/next/no-img-element
