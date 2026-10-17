@@ -31,7 +31,7 @@ DAYBREAK gathers real reporting from 43 RSS feeds (21 publishers, including Dawn
 10. [Project layout](#project-layout)
 11. [Known limitations](#known-limitations)
 
-**Email:** see [`docs/EMAIL_SETUP.md`](docs/EMAIL_SETUP.md) (Resend SMTP for Supabase, templates, welcome email). **Live URL:** https://daybreak-gilt.vercel.app, a free Vercel domain. **Adding API keys:** see [`docs/API_KEYS.md`](docs/API_KEYS.md). Also see [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) (five-minute Loom script), [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) and [`docs/EVALUATION.md`](docs/EVALUATION.md) (measured results).
+**Story Explorer:** every live story has a **Full coverage** link to `/story/:id`. It groups reports of the same event (one per publisher, with a confidence note), shows a timeline, related stories and, with an LLM key, AI analysis with cited points. **Copyright:** see [`docs/COPYRIGHT.md`](docs/COPYRIGHT.md). **PWA:** installable, with a manifest, a service worker that never caches pages or APIs, and an offline page. **Email:** see [`docs/EMAIL_SETUP.md`](docs/EMAIL_SETUP.md) (Resend SMTP for Supabase, templates, welcome email). **Live URL:** https://daybreak-gilt.vercel.app, a free Vercel domain. **Adding API keys:** see [`docs/API_KEYS.md`](docs/API_KEYS.md). Also see [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) (five-minute Loom script), [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) and [`docs/EVALUATION.md`](docs/EVALUATION.md) (measured results).
 
 ---
 
@@ -417,9 +417,9 @@ These checks were run for this submission:
 
 | Check | Command | Result |
 |---|---|---|
-| Unit and integration tests | `npm test` | **145 passed** (18 files) |
+| Unit and integration tests | `npm test` | **156 passed** (18 files) |
 | Migration, RLS and immutability on real Postgres (PGlite) | part of `npm test` (`tests/rls.test.ts`) | passed |
-| End-to-end | `npm run test:e2e` | **13 passed**: landing CTAs and reduced motion, search recommendations, debounce and recent searches, broken-image fallbacks, plus the reader journey (with Explore follow and Search), cross-reader isolation, mobile, and 6 Supabase-mode auth tests against an unreachable Supabase. Run with bundled Chromium and `NEWS_MODE=sample` (the CI configuration) |
+| End-to-end | `npm run test:e2e` | **15 passed**: Story Explorer, PWA offline page, landing CTAs and reduced motion, search recommendations, debounce and recent searches, broken-image fallbacks, plus the reader journey (with Explore follow and Search), cross-reader isolation, mobile, and 6 Supabase-mode auth tests against an unreachable Supabase. Run with bundled Chromium and `NEWS_MODE=sample` (the CI configuration) |
 | Live RLS isolation on the production database | Supabase MCP `execute_sql`, rolled back | Bob saw 0 of Alice's editions, stories, preferences, feedback and bookmarks; cross-user writes blocked; published stories immutable; anonymous users saw nothing |
 | Workflow syntax | `actionlint` 1.7.12 with shellcheck 0.11.0 | no findings |
 | Types | `npm run typecheck` | clean |

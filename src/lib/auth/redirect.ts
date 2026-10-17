@@ -26,7 +26,7 @@ export function safeNext(raw: string | null | undefined): string | null {
 }
 
 /** Paths that need a signed-in reader (checked in proxy.ts and again on the server). */
-export const PRIVATE_PREFIXES = ["/newspaper", "/archive", "/saved", "/explore", "/search", "/settings", "/onboarding"];
+export const PRIVATE_PREFIXES = ["/newspaper", "/archive", "/saved", "/explore", "/search", "/settings", "/onboarding", "/story"];
 
 export function isPrivatePath(pathname: string): boolean {
   return PRIVATE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));

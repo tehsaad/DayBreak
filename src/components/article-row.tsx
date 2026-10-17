@@ -1,6 +1,8 @@
 "use client";
 
+import { displayExcerpt } from "@/lib/news/rights";
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { ArrowUpRight, Bookmark, BookmarkCheck, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { api, ApiError } from "@/lib/client-api";
 import { safeLinkUrl } from "@/lib/security/url";
@@ -79,7 +81,7 @@ export function ArticleRow({ article, timeZone, saved: initiallySaved = false }:
             {article.publisher} · {formatTime(article.publishedAt, timeZone)}
             {article.sample ? " · Sample" : ""}
           </p>
-          {article.description ? <p className="mt-1 line-clamp-2 text-sm text-ink-soft">{article.description}</p> : null}
+          {displayExcerpt(article.description) ? <p className="mt-1 line-clamp-2 text-sm text-ink-soft">{displayExcerpt(article.description)}</p> : null}
         </div>
         <Thumb src={article.imageUrl} alt={article.title} size="thumb" label={TOPICS[article.topics[0] ?? "world"].short} className="mt-1" />
       </div>
@@ -96,6 +98,7 @@ export function ArticleRow({ article, timeZone, saved: initiallySaved = false }:
         <button type="button" className={btn} onClick={hide} disabled={pending}>
           <X size={14} aria-hidden /> Not interested
         </button>
+        {!article.sample ? <Link href={`/story/${article.id}`} className={`${btn} font-semibold text-ink`}>Full coverage</Link> : null}
       </div>
       {error ? <p role="alert" className="mt-1 font-sans text-xs text-accent">{error}</p> : null}
     </li>

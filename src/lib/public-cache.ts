@@ -16,6 +16,12 @@ export function publicMemo<T>(key: string, ttlMs: number, load: () => Promise<T>
   return value;
 }
 
+/** True when a fresh entry exists (used to rate-limit only calls that would do real work). */
+export function publicMemoHas(key: string, ttlMs: number, now = Date.now()): boolean {
+  const hit = entries.get(key);
+  return Boolean(hit && now - hit.at < ttlMs);
+}
+
 export function __clearPublicMemo() {
   entries.clear();
 }

@@ -4,6 +4,10 @@ import { safeFetch } from "../security/safe-fetch";
 import { safeLinkUrl } from "../security/url";
 import { topicLabel } from "../topics";
 import type { BiggerPicture, Edition, EditionStory } from "../types";
+import { displayExcerpt } from "../news/rights";
+
+/** Publisher text is limited to one short sentence, as on the web. */
+const summaryOf = (st: EditionStory) => (st.summarySource === "source" ? displayExcerpt(st.summary, st.article.sourceId) : st.summary);
 
 /**
  * Print edition. Rendered on demand from the SAVED edition only — no news search, no model
@@ -193,7 +197,7 @@ function StoryBlock({ story, compact }: { story: EditionStory; compact?: boolean
       <Text style={s.kicker}>{pdfText(topicLabel(a.topics[0] ?? "world"))}</Text>
       <Text style={compact ? s.briefHeadline : s.headline}>{pdfText(a.title)}</Text>
       <Meta story={story} />
-      {story.summary ? <Text>{pdfText(compact ? story.summary.slice(0, 220) + (story.summary.length > 220 ? "…" : "") : story.summary)}</Text> : null}
+      {summaryOf(story) ? <Text>{pdfText(summaryOf(story))}</Text> : null}
       {!compact && story.whyItMatters ? <Text style={s.why}>{pdfText(story.whyItMatters)}</Text> : null}
       <SourceLink story={story} />
     </View>
@@ -243,7 +247,7 @@ export function EditionDocument({ edition, leadImage }: { edition: Edition; lead
                 </>
               ) : null}
               <Meta story={lead} />
-              <Text style={{ fontSize: 10.4 }}>{pdfText(lead.summary)}</Text>
+              <Text style={{ fontSize: 10.4 }}>{pdfText(summaryOf(lead))}</Text>
               {lead.whyItMatters ? <Text style={s.why}>{pdfText(lead.whyItMatters)}</Text> : null}
               <SourceLink story={lead} />
             </View>
@@ -255,7 +259,7 @@ export function EditionDocument({ edition, leadImage }: { edition: Edition; lead
                   <Text style={s.kicker}>{pdfText(topicLabel(st.article.topics[0] ?? "world"))}</Text>
                   <Text style={s.sideHeadline}>{pdfText(st.article.title)}</Text>
                   <Meta story={st} />
-                  <Text>{pdfText(st.summary.length > 260 ? `${st.summary.slice(0, 257)}…` : st.summary)}</Text>
+                  <Text>{pdfText(summaryOf(st))}</Text>
                   <SourceLink story={st} />
                 </View>
               ))}

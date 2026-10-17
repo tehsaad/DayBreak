@@ -38,7 +38,7 @@ describe("deploy gate: Vercel environment check", () => {
   it("refuses to deploy without Supabase, cron or LLM configuration", () => {
     const { ok, missing } = checkEnv(parseEnvNames(ENV_LS.replace(/^ (CRON_SECRET|ANTHROPIC_API_KEY|SUPABASE_SERVICE_ROLE_KEY).*$/gm, "")));
     expect(ok).toBe(false);
-    expect(missing.map((m) => m.label)).toEqual(["Supabase service-role key (server-only)", "Cron secret", "LLM provider credentials"]);
+    expect(missing.map((m) => m.label)).toEqual(["Supabase service-role key (server-only)", "Cron secret"]);
     expect(run("check-vercel-env.mjs", "").code).toBe(1);
   });
 
@@ -71,7 +71,9 @@ describe("deploy gate: health smoke test", () => {
 
   it("fails demo-mode, sample-news, no-AI or no-cron deployments", () => {
     const bad = { ok: true, storage: "demo", sharedNews: "file", news: "sample", ai: null, cronSecretConfigured: false };
-    expect(checkHealth(bad).problems).toHaveLength(5);
+    expect(checkHealth(bad).problems).toHaveLength(4);
+    // AI is optional by design: a deployment without a key passes with a labelled fallback.
+    expect(checkHealth({ ...good, ai: null }).ok).toBe(true);
     // Accounts work but the shared news pool isn't durable without the service-role key.
     expect(checkHealth({ ...good, sharedNews: "instance-cache" }).problems).toEqual([expect.stringMatching(/SUPABASE_SERVICE_ROLE_KEY missing/)]);
     expect(run("check-health.mjs", JSON.stringify(bad)).code).toBe(1);

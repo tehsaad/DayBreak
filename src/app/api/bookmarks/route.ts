@@ -1,3 +1,4 @@
+import { publicBookmark } from "@/lib/news/rights";
 import { z } from "zod";
 import { apiError, json, parseBody, rateLimit, sameOrigin, tooMany } from "@/lib/api";
 import { getReader } from "@/lib/auth/reader";
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const reader = await getReader();
   if (!reader) return apiError(401, "Not signed in");
-  return json({ bookmarks: await reader.store.listBookmarks(reader.userId) });
+  return json({ bookmarks: (await reader.store.listBookmarks(reader.userId)).map(publicBookmark) });
 }
 
 const Add = z.object({ editionId: z.string().uuid().optional(), articleId: z.string().min(1).max(64) });

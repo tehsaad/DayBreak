@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { LanguageModel } from "ai";
 import { LIMITS, llmStatusNote, newsMode } from "../env";
-import { runEditorial, SUMMARY_CHARS, type EditorialResult } from "../ai/editorial";
+import { runEditorial, type EditorialResult } from "../ai/editorial";
 import { ingest } from "../news/ingest";
 import { sampleArticles } from "../news/sample";
 import { editionDateFor } from "../preferences";
@@ -9,7 +9,7 @@ import { computeLearnedProfile, topicWeights } from "../rank/learning";
 import { planEdition, type PlannedStory } from "../rank/plan";
 import { RANKING_VERSION, WEIGHTS } from "../rank/score";
 import type { Store } from "../store/types";
-import { truncateText } from "../text";
+import { displayExcerpt } from "../news/rights";
 import type { Article, ArticleSnapshot, Edition, EditionStory, ReaderPreferences } from "../types";
 import { evidenceBiggerPicture, evidenceThreeThings, findEarlierCoverage, templateIntro } from "./evidence";
 
@@ -184,7 +184,6 @@ async function doGenerate(opts: GenerateOptions): Promise<GenerateResult> {
     }
   }
 
-  const summaryLimit = SUMMARY_CHARS[prefs.depth];
   const stories: EditionStory[] = plan.stories.map((s: PlannedStory, position) => {
     const article = snapshots[position]!;
     const ai = editorial?.summaries.get(article.id);
@@ -197,7 +196,7 @@ async function doGenerate(opts: GenerateOptions): Promise<GenerateResult> {
       section: s.section,
       tier: s.tier,
       article,
-      summary: ai?.summary ?? (article.excerpt ? truncateText(article.excerpt, summaryLimit) : ""),
+      summary: ai?.summary ?? displayExcerpt(article.excerpt, article.sourceId),
       summarySource: ai ? "ai" : "source",
       whyItMatters: ai?.whyItMatters ?? null,
       reasons: s.scored.reasons,

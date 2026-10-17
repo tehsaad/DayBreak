@@ -1,5 +1,6 @@
-import { TOPICS, contentTokens, headlineSimilarity, regionName, type TopicId } from "../topics";
-import { firstSentence, truncateText } from "../text";
+import { TOPICS, headlineSimilarity, regionName, type TopicId } from "../topics";
+import { displayExcerpt } from "../news/rights";
+import { truncateText } from "../text";
 import type { ArticleSnapshot, BiggerPicture, Edition, EarlierCoverage, EvidenceRef, KnowledgeItem, ReaderPreferences } from "../types";
 
 /**
@@ -31,6 +32,15 @@ export function extractEntities(text: string): string[] {
   return [...found.keys()];
 }
 
+/** Names too broad to connect two stories on their own ("AI", "US", "Government"…). */
+export const GENERIC_ENTITIES = new Set(
+  ["AI", "US", "U.S", "UK", "UN", "EU", "USA", "Government", "Minister", "President", "Prime Minister", "Police", "Court", "Parliament", "State", "City", "World", "Europe", "Asia", "Africa", "America", "China", "India", "Pakistan", "Russia", "Britain", "England", "University", "Company", "Report", "Study", "People", "Report", "BBC", "CEO"].map((e) => e.toLowerCase()),
+);
+
+export function specificEntities(text: string): string[] {
+  return extractEntities(text).filter((e) => !GENERIC_ENTITIES.has(e.toLowerCase()) && e.length > 2);
+}
+
 export function sharedEntities(a: string, b: string): string[] {
   const eb = new Set(extractEntities(b).map((e) => e.toLowerCase()));
   return extractEntities(a).filter((e) => eb.has(e.toLowerCase()));
@@ -43,23 +53,25 @@ export interface Connection {
   strength: number;
 }
 
-/** Stories in the same edition that share named entities or substantial vocabulary. */
+/**
+ * Stories in the same edition with a genuine link: the same event (very similar headlines), or at
+ * least two specific shared names (people, organisations, places below country level). Generic
+ * terms such as "AI" or "US" never count. The relation text says plainly that this is a
+ * metadata-based connection, not analysis.
+ */
 export function findConnections(story: ArticleSnapshot, others: ArticleSnapshot[], max = 3): Connection[] {
   const text = `${story.title}. ${story.excerpt}`;
-  const tokens = contentTokens(text);
+  const mine = new Set(specificEntities(text).map((e) => e.toLowerCase()));
   const out: Connection[] = [];
   for (const o of others) {
     if (o.id === story.id) continue;
-    const otherText = `${o.title}. ${o.excerpt}`;
-    const entities = sharedEntities(text, otherText).slice(0, 3);
-    const otherTokens = contentTokens(otherText);
-    let shared = 0;
-    for (const t of tokens) if (otherTokens.has(t)) shared++;
-    const strength = entities.length * 2 + shared / Math.max(6, Math.min(tokens.size, otherTokens.size));
-    if (entities.length >= 1 && (entities.length >= 2 || shared >= 4)) {
-      out.push({ articleId: o.id, title: o.title, relation: `Both stories mention ${listJoin(entities)}.`, strength });
-    } else if (headlineSimilarity(story.title, o.title) >= 0.3) {
-      out.push({ articleId: o.id, title: o.title, relation: "Closely related headline in today's edition.", strength });
+    const sim = headlineSimilarity(story.title, o.title);
+    const shared = specificEntities(`${o.title}. ${o.excerpt}`).filter((e) => mine.has(e.toLowerCase()));
+    const uniqueShared = [...new Map(shared.map((e) => [e.toLowerCase(), e])).values()].slice(0, 3);
+    if (sim >= 0.45) {
+      out.push({ articleId: o.id, title: o.title, relation: `Basic metadata connection: ${o.publisher} appears to report the same development.`, strength: 3 + sim });
+    } else if (uniqueShared.length >= 2) {
+      out.push({ articleId: o.id, title: o.title, relation: `Basic metadata connection: both reports involve ${listJoin(uniqueShared)}.`, strength: uniqueShared.length + sim });
     }
   }
   return out.sort((a, b) => b.strength - a.strength).slice(0, max);
@@ -87,22 +99,31 @@ export function findEarlierCoverage(story: ArticleSnapshot, history: Edition[], 
     .map(({ editionId, editionDate, title, publisher, url }) => ({ editionId, editionDate, title, publisher, url }));
 }
 
-const QUESTIONS: Record<TopicId, string> = {
-  "ai-tech": "Who benefits from this technology, and who carries its risks?",
-  science: "How large was the study, and has the result been independently replicated?",
-  pakistan: "Which institutions are involved, and what do official sources versus other parties say?",
-  world: "Whose accounts does this report rely on, and which perspectives are missing?",
-  education: "Who is eligible or affected, and what are the deadlines or costs involved?",
-  business: "Who gains and who pays — consumers, workers, investors or the state?",
-  climate: "Is this a single event or part of a measured long-term trend?",
-  health: "What does the evidence show, and how strong is it — trial, observation or expert opinion?",
-  sports: "What does this result change in the standings or the season ahead?",
-  culture: "Why is this work drawing attention now, and from whom?",
-  society: "Whose lives does this change, and are their voices in the reporting?",
-};
-
-export function criticalQuestion(topic: TopicId | undefined): string {
-  return QUESTIONS[topic ?? "world"];
+/**
+ * A question built from the story itself (its headline's own subject and the kind of claim it
+ * makes) — not a per-topic template. Used only when no AI analysis is available.
+ */
+export function storyQuestion(story: Pick<ArticleSnapshot, "title" | "excerpt" | "publisher">): string {
+  const t = story.title.replace(/[“”"]/g, "").trim();
+  const subject = specificEntities(t)[0] ?? specificEntities(story.excerpt)[0];
+  const quoted = t.length > 90 ? `${t.slice(0, 87).replace(/\s+\S*$/, "")}…` : t;
+  const lower = `${t} ${story.excerpt}`.toLowerCase();
+  if (/\b(study|studies|research|researchers|scientists|trial|survey|finds|found)\b/.test(lower)) {
+    return `What does the evidence behind “${quoted}” actually show — how was it measured, and could another explanation account for the result?`;
+  }
+  if (/\b(says|said|claims?|accus\w*|warns?|alleg\w*|denies|vows?)\b/.test(lower)) {
+    return `What evidence ${subject ? `has ${subject}` : "has the speaker"} offered for this, and has anyone independent confirmed or disputed it?`;
+  }
+  if (/\b(court|judge|ruling|verdict|charged|arrest\w*|trial)\b/.test(lower)) {
+    return `What happens next in this case${subject ? ` involving ${subject}` : ""}, and what is still undecided?`;
+  }
+  if (/\d/.test(t) || /\b(price|inflation|rate|budget|loan|tax|billion|million|percent|%)\b/.test(lower)) {
+    return `Who is affected by the figures in “${quoted}”, and compared with what baseline?`;
+  }
+  if (/\b(plan|policy|bill|law|announce\w*|launch\w*|approv\w*|ban|scheme)\b/.test(lower)) {
+    return `${subject ? `When will ${subject}'s` : "When will this"} plan take effect, and who decides whether it works?`;
+  }
+  return `What would you need to know beyond ${story.publisher}'s report to judge “${quoted}” for yourself?`;
 }
 
 function formatDate(isoDate: string): string {
@@ -123,7 +144,7 @@ export function evidenceBiggerPicture(
 ): BiggerPicture {
   const connections = findConnections(story, editionArticles);
   const earlier = findEarlierCoverage(story, history);
-  const whatHappened = story.excerpt ? firstSentence(story.excerpt, 320) : story.title;
+  const whatHappened = displayExcerpt(story.excerpt, story.sourceId) || story.title;
   const insufficient = !story.excerpt || story.excerpt.length < 60;
   let whatChanged: string | null = null;
   if (earlier[0]) {
@@ -140,12 +161,12 @@ export function evidenceBiggerPicture(
     earlierCoverage: earlier,
     whatChanged,
     watchNext: null,
-    question: criticalQuestion(story.topics[0]),
+    question: storyQuestion(story),
     evidence: [evidenceRef(story), ...alsoReportedBy.slice(0, 3)],
     insufficient,
     note: insufficient
       ? "The publisher's feed gives very little detail for this story, so there isn't enough evidence for analysis. Read the original report."
-      : "Assembled from the publisher's description and your saved editions. AI analysis is not available for this story.",
+      : "Basic metadata-based view: the publisher's own first sentence, links found from shared names, and your saved editions. No AI analysis was used.",
   };
 }
 
@@ -166,7 +187,7 @@ export function evidenceThreeThings(stories: { article: ArticleSnapshot; score: 
       usedTopics.add(topic);
       out.push({
         headline: truncateText(a.title, 110),
-        fact: a.excerpt ? firstSentence(a.excerpt, 260) : a.title,
+        fact: displayExcerpt(a.excerpt, a.sourceId) || a.title,
         interpretation: null,
         regionalNote:
           prefs.region !== "GLOBAL" && a.regions.includes(prefs.region)

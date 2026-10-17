@@ -1,3 +1,4 @@
+import { displayExcerpt } from "@/lib/news/rights";
 import { Suspense } from "react";
 import Link from "next/link";
 import { after } from "next/server";
@@ -60,7 +61,7 @@ function StoryCard({ a, delay, big = false }: { a: Article; delay: number; big?:
             )}
           </h3>
           <p className="meta mt-1">{a.publisher} · {formatTime(a.publishedAt, "UTC")}{a.sample ? " · Sample" : ""}</p>
-          {big && a.description ? <p className="mt-2 line-clamp-3 leading-relaxed text-ink-soft">{a.description}</p> : null}
+          {big && displayExcerpt(a.description) ? <p className="mt-2 line-clamp-3 leading-relaxed text-ink-soft">{displayExcerpt(a.description)}</p> : null}
         </div>
         {!big ? <Thumb src={a.imageUrl} alt={a.title} size="thumb" label={TOPICS[a.topics[0] ?? "world"].short} /> : null}
       </div>

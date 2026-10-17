@@ -16,10 +16,6 @@ export const REQUIREMENTS = [
   { label: "Supabase anon/publishable key", anyOf: ["NEXT_PUBLIC_SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"] },
   { label: "Supabase service-role key (server-only)", anyOf: ["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEY"] },
   { label: "Cron secret", anyOf: ["CRON_SECRET"] },
-  {
-    label: "LLM provider credentials",
-    anyOf: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_AI_STUDIO_API_KEY", "AI_GATEWAY_API_KEY", "LLM_PROVIDER"],
-  },
 ];
 
 /** NEXT_PUBLIC_ values are inlined into browser bundles; none of these may ever be public. */
@@ -36,7 +32,19 @@ export function parseEnvNames(text) {
 }
 
 /** Optional variables: reported, never required. */
-export const OPTIONAL = [{ label: "GNews API key (extra news source)", anyOf: ["GNEWS_API_KEY"] }];
+/**
+ * Optional variables: reported, never required. AI is optional by an explicit decision
+ * (docs/DEPLOYMENT_CHECKLIST.md): without it every AI surface shows a clearly labelled,
+ * non-AI fallback, so a missing key degrades features rather than breaking the product.
+ */
+export const OPTIONAL = [
+  {
+    label: "LLM provider credentials (AI summaries and analysis)",
+    anyOf: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_AI_STUDIO_API_KEY", "AI_GATEWAY_API_KEY", "LLM_PROVIDER"],
+  },
+  { label: "GNews API key (extra news source)", anyOf: ["GNEWS_API_KEY"] },
+  { label: "Resend (welcome email)", anyOf: ["RESEND_API_KEY"] },
+];
 
 export function checkEnv(names) {
   const missing = REQUIREMENTS.filter((r) => !r.anyOf.some((n) => names.has(n)));

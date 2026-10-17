@@ -29,7 +29,10 @@ Hard rules:
 4. If a record has too little detail to support a statement, say so briefly instead of guessing (for example "The report gives few details.").
 5. "whyItMatters" explains significance using only the records. "watchNext" and "interpretation" are interpretation: phrase them conditionally ("could", "will be worth watching whether") and never as fact.
 6. "whatChanged" may only compare with the EARLIER COVERAGE lines supplied for that story; otherwise return null.
-7. No hype, no clickbait, no exclamation marks. Write in British English.`;
+7. Connections: link two stories only through a shared event, cause, consequence or genuinely relevant context, and say what the link is. Overlapping words or broad names (AI, US, "government") are not a connection. If there is none, return an empty list.
+8. The question must be specific to that story: an unanswered issue, limitation, implication or evidence gap. Example of the expected quality: for a report that PhD students who use AI are less likely to stay in academia, ask "Does using AI improve PhD graduates' employment prospects, or are people already heading for industry more likely to use AI?" Never use a generic question that could fit any story.
+9. Write summaries in your own words. Never copy sentences from the excerpt.
+10. No hype, no clickbait, no exclamation marks. Write in British English.`;
 
 const ModelOutput = z.object({
   intro: z.string(),

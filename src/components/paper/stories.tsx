@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { api } from "@/lib/client-api";
 import { safeLinkUrl } from "@/lib/security/url";
 import { TOPICS, topicLabel } from "@/lib/topics";
+import { displayExcerpt } from "@/lib/news/rights";
 import { Thumb } from "../thumb";
 import type { EditionStory } from "@/lib/types";
 import { BiggerPicturePanel } from "./bigger-picture";
@@ -29,6 +31,7 @@ function SourceLink({ editionId, story, className = "" }: { editionId: string; s
   const href = safeLinkUrl(story.article.url);
   if (!href) return null;
   return (
+    <>
     <a
       href={href}
       target="_blank"
@@ -40,6 +43,12 @@ function SourceLink({ editionId, story, className = "" }: { editionId: string; s
       <ArrowUpRight size={13} aria-hidden />
       <span className="sr-only">(opens in a new tab)</span>
     </a>
+    {!story.article.sample ? (
+      <Link href={`/story/${story.article.id}`} className="no-print ml-4 inline-flex items-center gap-1 font-sans text-xs font-semibold text-ink underline-offset-2 hover:underline">
+        Full coverage{story.alsoReportedBy.length ? ` · ${story.alsoReportedBy.length + 1} publishers` : ""}
+      </Link>
+    ) : null}
+    </>
   );
 }
 
@@ -88,6 +97,9 @@ function LeadImage({ story }: { story: EditionStory }) {
   );
 }
 
+/** Publisher text is limited to one short sentence everywhere, including older editions. */
+const shownSummary = (story: EditionStory) => (story.summarySource === "source" ? displayExcerpt(story.summary, story.article.sourceId) : story.summary);
+
 const thumbLabel = (story: EditionStory) => TOPICS[story.article.topics[0] ?? "world"].short;
 
 function useHidden() {
@@ -110,7 +122,7 @@ export function LeadStory(props: StoryProps) {
       </div>
       <p className="text-lg leading-relaxed text-ink-soft sm:text-xl">
         <SummaryLabel story={story} />
-        {story.summary || "The publisher's feed did not include a description for this story."}
+        {shownSummary(story) || "The publisher's feed did not include a description for this story."}
       </p>
       {story.whyItMatters ? <p className="mt-3 border-l-2 border-accent pl-3 italic text-ink-soft">{story.whyItMatters}</p> : null}
       <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -139,7 +151,7 @@ export function SideStory(props: StoryProps) {
       <StoryMeta story={story} timeZone={timeZone} />
       <p className="mt-2 leading-relaxed text-ink-soft">
         <SummaryLabel story={story} />
-        {story.summary}
+        {shownSummary(story)}
       </p>
       <SourceLink editionId={editionId} story={story} className="mt-2" />
       <StoryActions editionId={editionId} story={story} saved={props.saved} onSavedChange={(v) => props.onSavedChange(story.article.id, v)} onHide={setHidden} compact />
@@ -166,7 +178,7 @@ export function StandardStory(props: StoryProps) {
       <StoryMeta story={story} timeZone={timeZone} />
       <p className="mt-2 leading-relaxed text-ink-soft">
         <SummaryLabel story={story} />
-        {story.summary}
+        {shownSummary(story)}
       </p>
       {story.whyItMatters ? <p className="mt-2 text-sm italic text-muted">{story.whyItMatters}</p> : null}
       <SourceLink editionId={editionId} story={story} className="mt-2" />
@@ -189,7 +201,7 @@ export function BriefStory(props: StoryProps) {
           <StoryMeta story={story} timeZone={timeZone} />
         </div>
       </div>
-      {story.summary ? <p className="mt-1 line-clamp-3 text-[0.95rem] leading-relaxed text-ink-soft">{story.summary}</p> : null}
+      {shownSummary(story) ? <p className="mt-1 line-clamp-3 text-[0.95rem] leading-relaxed text-ink-soft">{shownSummary(story)}</p> : null}
       <SourceLink editionId={editionId} story={story} className="mt-1.5" />
       <StoryActions editionId={editionId} story={story} saved={props.saved} onSavedChange={(v) => props.onSavedChange(story.article.id, v)} onHide={setHidden} compact />
     </article>

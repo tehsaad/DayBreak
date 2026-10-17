@@ -14,7 +14,6 @@ export function checkHealth(health) {
   if (health?.storage !== "supabase") problems.push(`storage is "${health?.storage}", expected "supabase" (Supabase variables missing or invalid)`);
   if (health?.sharedNews !== "supabase") problems.push(`shared news is "${health?.sharedNews}", expected "supabase" (SUPABASE_SERVICE_ROLE_KEY missing)`);
   if (health?.news !== "live") problems.push(`news mode is "${health?.news}", expected "live" (NEWS_MODE must not be "sample" in production)`);
-  if (!health?.ai?.provider) problems.push("no LLM provider is configured");
   if (health?.cronSecretConfigured !== true) problems.push("CRON_SECRET is not configured");
   return { ok: problems.length === 0, problems };
 }
@@ -33,7 +32,7 @@ function main() {
     for (const p of problems) console.log(`✗ ${p}`);
     process.exit(1);
   }
-  console.log(`✓ storage=${health.storage} sharedNews=${health.sharedNews} news=${health.news} ai=${health.ai.provider}/${health.ai.model} cron=configured`);
+  console.log(`✓ storage=${health.storage} sharedNews=${health.sharedNews} news=${health.news} ai=${health.ai ? `${health.ai.provider}/${health.ai.model}` : "off (labelled fallbacks)"} cron=configured`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main();

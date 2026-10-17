@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Newsreader, Source_Serif_4 } from "next/font/google";
 import { OfflineBanner } from "@/components/offline-banner";
+import { PwaInstall } from "@/components/pwa";
 import "./globals.css";
 
 const newsreader = Newsreader({ subsets: ["latin", "latin-ext"], variable: "--font-newsreader", style: ["normal", "italic"], display: "swap" });
@@ -11,6 +12,8 @@ export const metadata: Metadata = {
   title: { default: "DAYBREAK — The world, filtered through you", template: "%s · DAYBREAK" },
   description: "A personal morning paper: real reporting from trusted publishers, ranked for you, explained, and printable.",
   applicationName: "DAYBREAK",
+  appleWebApp: { capable: true, title: "DAYBREAK", statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
   metadataBase: new URL(process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000"),
 };
 
@@ -30,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </a>
         <OfflineBanner />
         {children}
+        <PwaInstall />
       </body>
     </html>
   );

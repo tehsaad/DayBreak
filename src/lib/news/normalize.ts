@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { classifyArticle, headlineSimilarity } from "../topics";
 import { cleanText, htmlToText, stripFeedBoilerplate, truncateText } from "../text";
 import { parseExternalUrl, safeImageUrl } from "../security/url";
+import { allowedImage, STORED_EXCERPT_MAX } from "./rights";
 import type { Article } from "../types";
 import type { RawFeedItem } from "./parse";
 import type { SourceDef } from "./sources";
@@ -62,8 +63,9 @@ export function parseDate(raw: string | null, now: Date): string | null {
   return new Date(Math.min(t, now.getTime())).toISOString();
 }
 
-const MAX_EXCERPT = 480;
-const MAX_EXCERPT_FULLTEXT_FEEDS = 300;
+// Kept server-side only (matching, grounding); readers see at most DISPLAY_EXCERPT_MAX.
+const MAX_EXCERPT = STORED_EXCERPT_MAX;
+const MAX_EXCERPT_FULLTEXT_FEEDS = 240;
 
 /**
  * Turn a raw feed item into an Article, or null when it is unusable (no title, unsafe URL).
@@ -100,7 +102,7 @@ export function normalizeItem(item: RawFeedItem, source: SourceDef, now: Date = 
     publisher: item.publisher ? truncateText(cleanText(item.publisher), 80) : source.publisher,
     sourceId: source.id,
     author,
-    imageUrl: pickImage(item.imageCandidates),
+    imageUrl: allowedImage(pickImage(item.imageCandidates), source.id),
     publishedAt: parseDate(item.published, now),
     collectedAt: now.toISOString(),
     topics,

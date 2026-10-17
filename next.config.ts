@@ -9,6 +9,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Versions the service worker so each deployment replaces the previous cache.
+  env: { NEXT_PUBLIC_APP_VERSION: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? "dev" },
   // @react-pdf/renderer ships its own font and layout engines; keep it out of the server bundle.
   serverExternalPackages: ["@react-pdf/renderer"],
   // PDF fonts are read from disk at runtime; make sure they ship with the function bundles.
@@ -24,7 +26,11 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // The worker must never be served stale, or updates would be delayed.
+      { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }, { key: "Service-Worker-Allowed", value: "/" }] },
+    ];
   },
 };
 

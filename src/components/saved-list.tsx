@@ -1,5 +1,6 @@
 "use client";
 
+import { displayExcerpt } from "@/lib/news/rights";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Trash2 } from "lucide-react";
@@ -43,7 +44,7 @@ export function SavedList({ bookmarks, timeZone }: { bookmarks: Bookmark[]; time
               <p className="meta mt-1">
                 {b.article.publisher} · {formatTime(b.article.publishedAt, timeZone)} · saved {formatTime(b.savedAt, timeZone)}
               </p>
-              {b.article.excerpt ? <p className="mt-2 line-clamp-3 text-ink-soft">{b.article.excerpt}</p> : null}
+              {displayExcerpt(b.article.excerpt) ? <p className="mt-2 line-clamp-3 text-ink-soft">{displayExcerpt(b.article.excerpt)}</p> : null}
               <div className="mt-3 flex flex-wrap items-center gap-4 font-sans text-xs">
                 {href ? (
                   <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold text-accent hover:underline">
