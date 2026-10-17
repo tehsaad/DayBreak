@@ -48,5 +48,30 @@ regulator proposes ban on added sugars (Business Recorder); Oregon teacher fough
 the right mix (ESPNcricinfo); Guardiola standing ovation (BBC Sport); Trump swing district blitz
 (NPR).
 
+## Round 2: 17 Oct 2026, prompt `sum-v2`, `openai/gpt-oss-20b`
+
+Sample: all 18 summaries written after the `sum-v2` deploy. Same method and auditor as round 1.
+
+| Result | Count |
+|---|---:|
+| Fully supported | 14 / 18 (**78%**, target 95%) |
+| Misattribution (words credited to the wrong person) | 2 |
+| Completed a truncated excerpt with an invented ending ("…unfounded") | 1 |
+| Non-summary saved for a Hindi article ("no summary is provided") | 1 |
+| Over-hedged but not false ("reportedly said" for "says") | 2, counted as supported |
+
+The round-1 errors (contradiction, dropped hedge, title) didn't recur, but the 20b model
+struggled with messy inputs: truncated, bullet-style and non-English excerpts. Changes in
+`sum-v3`:
+- Default model `openai/gpt-oss-120b`.
+- Truncated excerpts are marked `[truncated]`, with an instruction never to complete them.
+- Attribution must stay with the person the report names, and headline wording belongs to the
+  publisher.
+- "Says" stays "says".
+- Non-Latin-script and fragment sources are skipped (`summarisableText`).
+- Meta answers ("no summary…") are rejected.
+
+Round 3 is to be run on `sum-v3` output after deployment.
+
 Re-run: query 25 rows of `article_summaries ⋈ articles` ordered by `md5(article_id)` for the
 current model, and compare each summary with its source.

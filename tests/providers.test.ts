@@ -39,10 +39,10 @@ describe("provider configuration", () => {
     clear();
     process.env.GROQ_API_KEY = "x";
     process.env.GEMINI_API_KEY = "y";
-    expect(llmConfig()).toMatchObject({ provider: "groq", model: "openai/gpt-oss-20b" });
+    expect(llmConfig()).toMatchObject({ provider: "groq", model: "openai/gpt-oss-120b" });
     expect(llmFallbackConfig()).toMatchObject({ provider: "google", model: "gemini-3.5-flash" });
-    process.env.GROQ_MODEL = "openai/gpt-oss-120b";
-    expect(llmConfig()?.model).toBe("openai/gpt-oss-120b");
+    process.env.GROQ_MODEL = "openai/gpt-oss-20b";
+    expect(llmConfig()?.model).toBe("openai/gpt-oss-20b");
     process.env.LLM_FALLBACK_PROVIDER = "none";
     expect(llmFallbackConfig()).toBeNull();
   });
@@ -125,6 +125,17 @@ describe("hedge preservation", () => {
     expect(dropsHedge("The UAE is set to resume payments to Yemeni forces, a move prompted by Houthi advances that alarm Gulf leaders.", src)).toBe(true);
     expect(dropsHedge("The UAE will reportedly resume payments to Yemeni forces after Houthi advances.", src)).toBe(false);
     expect(dropsHedge("Sonay Kartal reached the Wuhan Open final.", "Britain's Sonay Kartal beats Jelena Ostapenko to reach the Wuhan Open final.")).toBe(false);
+  });
+});
+
+describe("summary input and output filters (real cases, 17 Oct)", () => {
+  it("skips non-English and caption-fragment sources, and rejects meta answers", async () => {
+    const { summarisableText, summariseArticles } = await import("@/lib/ai/summaries");
+    expect(summarisableText("रणजी ट्रॉफ़ी के दूसरे राउंड में पंजाब के लिए खेलेंगे शुभमन गिल. नवंबर में वनडे सीरीज़")).toBe(false);
+    expect(summarisableText("Sindh approves flood relief package. Officials said the package was approved.")).toBe(true);
+    const a = makeArticle({ id: "m1", title: "Hindi cricket story", description: "Officials said the provincial government approved a new package for districts today." });
+    const meta = ok(JSON.stringify({ items: [{ id: "A1", summary: "The excerpt is in Hindi and does not provide a clear English headline; no summary is provided." }] }), "m");
+    expect((await summariseArticles(meta, "m", [a], { timeoutMs: 5000 })).run).toMatchObject({ saved: 0, rejected: 1 });
   });
 });
 

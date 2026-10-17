@@ -64,7 +64,7 @@ Once all three exist, the next successful CI run on `main` triggers **Deploy pro
 | Variable | Where | Notes |
 |---|---|---|
 | `GROQ_API_KEY` | Vercel (Production), server-only | From console.groq.com → API Keys. When set, Groq is the primary provider. |
-| `GROQ_MODEL` | optional | Default `openai/gpt-oss-20b` (Groq production model, ~1,000 tokens/s). `openai/gpt-oss-120b` for higher quality. Called with low reasoning effort. |
+| `GROQ_MODEL` | optional | Default `openai/gpt-oss-120b` (Groq production model, ~500 tokens/s, $0.15/$0.60 per M tokens), chosen after a summary audit (docs/SUMMARY_AUDIT.md). `openai/gpt-oss-20b` is faster and cheaper but made more attribution errors. Called with low reasoning effort. |
 | `GEMINI_API_KEY` | Vercel, server-only | Automatic fallback when Groq errors, rate-limits or times out. |
 | `LLM_FALLBACK_PROVIDER` | optional | Force a fallback provider, or `none` to disable it. |
 | `LLM_CONCURRENCY` | optional | Max simultaneous LLM calls per instance (default 4). |

@@ -5,9 +5,13 @@
 
 export type LlmProvider = "groq" | "anthropic" | "openai" | "google" | "gateway";
 
-/** Groq default verified against console.groq.com/docs/models (production models, Oct 2026). */
+/**
+ * Groq default verified against console.groq.com/docs/models (production models, Oct 2026).
+ * gpt-oss-120b rather than -20b: in a 43-summary audit of real output (docs/SUMMARY_AUDIT.md)
+ * the 20b model misattributed quotes and completed truncated excerpts.
+ */
 const DEFAULT_MODELS: Record<LlmProvider, string> = {
-  groq: "openai/gpt-oss-20b",
+  groq: "openai/gpt-oss-120b",
   anthropic: "claude-haiku-5-5",
   openai: "gpt-5-mini",
   google: "gemini-3.5-flash",
