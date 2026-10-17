@@ -1,0 +1,146 @@
+# Production deployment to Vercel, gated on CI.
+#
+# Vercel's Git integration builds Preview deployments for pull requests. Automatic production
+# deployments from `main` are disabled in vercel.json (git.deploymentEnabled.main = false), so
+# production only changes through this workflow, which runs after the CI workflow succeeds on
+# a push to main (or on manual dispatch from main, after re-checking CI for that commit).
+#
+# Steps: verify CI → verify required Vercel env vars exist (names only) → build → deploy a
+# production candidate WITHOUT assigning the domain → smoke-test /api/health on the candidate
+# → promote the candidate to the production domain.
+#
+# Until VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID are configured as repository secrets
+# this workflow exits early with a notice and deploys nothing.
+name: Deploy production
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  VERCEL_CLI: vercel@62.2.0
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  deploy:
+    name: Deploy to Vercel production
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ steps.promote.outputs.url }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      # Optional: lets the smoke test reach a candidate behind Vercel Deployment Protection.
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Check deployment credentials
+        id: creds
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::notice title=Production deploy skipped::VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID repository secrets are not configured. See README → Continuous deployment."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Confirm required CI checks passed for this commit
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          for check in "Typecheck, lint & unit tests" "Build & end-to-end"; do
+            conclusion=$(gh api "repos/$REPO/commits/$DEPLOY_SHA/check-runs?per_page=100" \
+              --jq "[.check_runs[] | select(.name == \"$check\")] | sort_by(.completed_at) | last | .conclusion")
+            echo "$check: ${conclusion:-missing}"
+            if [ "$conclusion" != "success" ]; then
+              echo "::error::Required check \"$check\" has not passed for $DEPLOY_SHA."
+              exit 1
+            fi
+          done
+
+      - name: Check out
+        if: steps.creds.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        if: steps.creds.outputs.ready == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.creds.outputs.ready == 'true'
+        run: npm ci
+
+      - name: Verify production environment variables (names only)
+        if: steps.creds.outputs.ready == 'true'
+        run: npx --yes "$VERCEL_CLI" env ls production --token "$VERCEL_TOKEN" | node scripts/ci/check-vercel-env.mjs
+
+      - name: Pull Vercel project settings
+        if: steps.creds.outputs.ready == 'true'
+        run: npx --yes "$VERCEL_CLI" pull --yes --environment=production --token "$VERCEL_TOKEN"
+
+      - name: Build
+        if: steps.creds.outputs.ready == 'true'
+        run: npx --yes "$VERCEL_CLI" build --prod --token "$VERCEL_TOKEN"
+
+      - name: Deploy production candidate (domain not yet assigned)
+        if: steps.creds.outputs.ready == 'true'
+        id: candidate
+        run: |
+          url=$(npx --yes "$VERCEL_CLI" deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Candidate: $url"
+
+      - name: Smoke-test candidate
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.url }}
+        run: |
+          if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
+            body=$(curl -fsS --retry 5 --retry-delay 5 --retry-all-errors -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" "$CANDIDATE/api/health")
+          else
+            body=$(npx --yes "$VERCEL_CLI" curl /api/health --deployment "$CANDIDATE" --token "$VERCEL_TOKEN" --yes)
+          fi
+          printf '%s' "$body" | node scripts/ci/check-health.mjs
+
+      - name: Promote candidate to production
+        if: steps.creds.outputs.ready == 'true'
+        id: promote
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.url }}
+        run: |
+          npx --yes "$VERCEL_CLI" promote "$CANDIDATE" --yes --token "$VERCEL_TOKEN"
+          echo "url=${PRODUCTION_URL:-$CANDIDATE}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify production domain
+        if: steps.creds.outputs.ready == 'true' && env.PRODUCTION_URL != ''
+        run: curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$PRODUCTION_URL/api/health" | node scripts/ci/check-health.mjs

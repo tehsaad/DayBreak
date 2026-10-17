@@ -8,7 +8,9 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
-  reporter: [["list"]],
+  forbidOnly: Boolean(process.env.CI),
+  // CI keeps an HTML report as a build artifact; locally the list output is enough.
+  reporter: process.env.CI ? [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]] : [["list"]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? `http://localhost:${PORT}`,
     // Uses the system Google Chrome when available (no browser download needed).

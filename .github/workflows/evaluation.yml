@@ -1,0 +1,50 @@
+# Live-news evaluation (not a required check).
+#
+# `npm run eval` fetches the public RSS feeds and measures personalisation, diversity, feedback
+# effects, PDF consistency and degradation. Its numbers depend on that day's news, so it is
+# informative rather than pass/fail and is kept out of CI. No credentials are used: storage is
+# demo mode and ranking runs without an LLM.
+name: Evaluation
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evaluation
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    name: Evaluate on live news
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATA_DIR: .data-eval
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Run evaluation (fetches public feeds)
+        run: npm run eval -- --refresh
+      - name: Add results to the job summary
+        if: ${{ !cancelled() }}
+        run: '[ -f docs/EVALUATION.md ] && cat docs/EVALUATION.md >> "$GITHUB_STEP_SUMMARY" || true'
+      - name: Upload evaluation report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evaluation
+          path: docs/EVALUATION.md
+          if-no-files-found: warn
+          retention-days: 30
