@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Confirm your email</title>
+</head>
+<body style="margin:0;padding:0;background:#f7f3ea;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Confirm your email to finish creating your DAYBREAK account.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f7f3ea;">
+<tr><td align="center" style="padding:32px 16px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fbf9f4;border:1px solid #1b1a17;">
+<tr><td align="center" style="padding:28px 32px 12px;font-family:Georgia,'Times New Roman',serif;color:#1b1a17;">
+<div style="font-size:30px;font-weight:700;letter-spacing:6px;">DAYBREAK</div>
+<div style="font-style:italic;font-size:14px;color:#625d53;margin-top:4px;">The world, filtered through you.</div>
+</td></tr>
+<tr><td style="padding:0 32px;"><div style="border-top:2px solid #1b1a17;border-bottom:1px solid #1b1a17;height:3px;"></div></td></tr>
+<tr><td style="padding:28px 32px 8px;font-family:Georgia,'Times New Roman',serif;color:#1b1a17;">
+<div style="font-family:Helvetica,Arial,sans-serif;font-size:11px;font-weight:bold;letter-spacing:2px;text-transform:uppercase;color:#7a1f2b;margin-bottom:8px;">Your morning paper</div>
+<h1 style="margin:0 0 14px;font-size:26px;line-height:1.2;">Confirm your email</h1>
+<div style="font-size:16px;line-height:1.6;color:#3d3a34;"><p style="margin:0 0 12px;">Someone — hopefully you — asked to create a DAYBREAK account with <strong>{{ .Email }}</strong>.</p>
+<p style="margin:0 0 12px;">Confirm your address to finish signing up. You'll go straight to setting up your morning paper.</p></div>
+</td></tr>
+<tr><td align="left" style="padding:16px 32px 8px;">
+<a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&amp;type=email" style="display:inline-block;background:#1b1a17;color:#f7f3ea;font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:bold;text-decoration:none;padding:13px 22px;">Confirm your email</a>
+</td></tr>
+<tr><td style="padding:20px 32px 28px;font-family:Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#625d53;border-top:1px solid #d9d0bf;">If the button doesn't work, copy this link into your browser:<br><a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email" style="color:#7a1f2b;word-break:break-all;">{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email</a><br><br>This link expires after a short time and can be used once. If you didn't create an account, ignore this email — nothing will happen.</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { clientIp, log, rateLimit } from "@/lib/api";
 import { supabaseForRequest } from "@/lib/auth/reader";
-import { authErrorCode } from "@/lib/auth/redirect";
+import { authErrorCode, PENDING_EMAIL_COOKIE } from "@/lib/auth/redirect";
 import { guardAuthPost, loginRedirect, readForm, redirectTo, siteUrl, validEmail } from "@/lib/auth/routes";
 
 export const dynamic = "force-dynamic";
@@ -31,5 +31,7 @@ export async function POST(req: NextRequest) {
   }
   // Session present → confirmation is disabled on this project; continue straight to onboarding.
   if (data.session) return redirectTo(req, "/auth/continue");
-  return loginRedirect(req, { notice: "check_email" });
+  const res = loginRedirect(req, { notice: "check_email" });
+  res.cookies.set(PENDING_EMAIL_COOKIE, email, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 3600 });
+  return res;
 }

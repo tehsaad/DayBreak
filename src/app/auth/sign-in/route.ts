@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { clientIp, log, rateLimit } from "@/lib/api";
 import { supabaseForRequest } from "@/lib/auth/reader";
-import { authErrorCode } from "@/lib/auth/redirect";
+import { authErrorCode, PENDING_EMAIL_COOKIE } from "@/lib/auth/redirect";
 import { guardAuthPost, loginRedirect, readForm, redirectTo, rememberNext, validEmail } from "@/lib/auth/routes";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,11 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase.auth.signInWithPassword({ email, password: form.password });
   if (error) {
     log("auth_sign_in_failed", { code: error.code ?? null });
-    return loginRedirect(req, { error: authErrorCode(error) });
+    const code = authErrorCode(error);
+    const res = loginRedirect(req, { error: code });
+    // Unconfirmed account: prefill the resend-confirmation form with the address just typed.
+    if (code === "unconfirmed") res.cookies.set(PENDING_EMAIL_COOKIE, email, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 3600 });
+    return res;
   }
   return rememberNext(redirectTo(req, "/auth/continue"), form.next);
 }

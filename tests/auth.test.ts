@@ -18,11 +18,33 @@ const auth = {
   signOut: vi.fn(),
 };
 let reader: ReaderContext | null = null;
+// profiles.welcome_email_sent_at per user, for the welcome-email claim.
+const welcomeSent = new Map<string, string | null>();
+const afterTasks: (() => unknown)[] = [];
 
 vi.mock("@/lib/auth/reader", () => ({
-  supabaseForRequest: async () => ({ auth }),
+  supabaseForRequest: async () => ({ auth, from: profilesTable }),
   getReader: async () => reader,
 }));
+vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/server")>()), after: (fn: () => unknown) => afterTasks.push(fn) }));
+
+function profilesTable() {
+  let patch: { welcome_email_sent_at?: string | null } = {};
+  let id = "";
+  let onlyIfNull = false;
+  const q = {
+    update: (p: typeof patch) => ((patch = p), q),
+    eq: (_c: string, v: string) => ((id = v), q),
+    is: () => ((onlyIfNull = true), q),
+    select: async () => {
+      const matches = welcomeSent.has(id) && (!onlyIfNull || welcomeSent.get(id) === null);
+      if (matches) welcomeSent.set(id, patch.welcome_email_sent_at ?? null);
+      return { data: matches ? [{ id }] : [], error: null };
+    },
+    then: (resolve: (v: unknown) => void) => (welcomeSent.set(id, patch.welcome_email_sent_at ?? null), resolve({ error: null })),
+  };
+  return q;
+}
 
 const ORIGIN = "https://daybreak-gilt.vercel.app";
 const get = (path: string, cookies: Record<string, string> = {}) =>
@@ -48,6 +70,8 @@ afterAll(() => {
 beforeEach(() => {
   for (const fn of Object.values(auth)) fn.mockReset();
   reader = null;
+  afterTasks.length = 0;
+  welcomeSent.clear();
 });
 
 describe("Continue with Google", () => {
@@ -136,7 +160,7 @@ describe("auth callback", () => {
   });
 
   it("exchanges an OAuth code for a session", async () => {
-    auth.exchangeCodeForSession.mockResolvedValue({ data: { session: {} }, error: null });
+    auth.exchangeCodeForSession.mockResolvedValue({ data: { session: {}, user: { id: "u1", email: "a@b.co", app_metadata: { provider: "email" } } }, error: null });
     const { GET } = await import("@/app/auth/callback/route");
     const res = await GET(get("/auth/callback?code=abc"));
     expect(auth.exchangeCodeForSession).toHaveBeenCalledWith("abc");
@@ -152,10 +176,57 @@ describe("auth callback", () => {
   it("verifies email confirmation links and rejects unknown types", async () => {
     auth.verifyOtp.mockResolvedValue({ data: {}, error: null });
     const { GET } = await import("@/app/auth/callback/route");
-    expect(location(await GET(get("/auth/callback?token_hash=h&type=signup")))).toBe(`${ORIGIN}/auth/continue`);
+    expect(location(await GET(get("/auth/callback?token_hash=h&type=signup")))).toBe(`${ORIGIN}/auth/continue?confirmed=1`);
     expect(auth.verifyOtp).toHaveBeenCalledWith({ token_hash: "h", type: "signup" });
     expect(location(await GET(get("/auth/callback?token_hash=h&type=bogus")))).toBe(`${ORIGIN}/login?error=expired`);
     expect(location(await GET(get("/auth/callback")))).toBe(`${ORIGIN}/login?error=expired`);
+  });
+});
+
+describe("welcome email via the OAuth callback", () => {
+  const google = { id: "g1", email: "reader@example.com", app_metadata: { provider: "google" }, identities: [{ provider: "google" }], user_metadata: { given_name: "Hamza" } };
+
+  it("sends exactly one welcome email for a first Google sign-in, even if the callback is retried", async () => {
+    process.env.RESEND_API_KEY = "re_test_key";
+    process.env.RESEND_FROM_EMAIL = "DAYBREAK <hello@tehsaad.site>";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ id: "m1" }), { status: 200 }));
+    try {
+      welcomeSent.set("g1", null);
+      auth.exchangeCodeForSession.mockResolvedValue({ data: { session: {}, user: google }, error: null });
+      const { GET } = await import("@/app/auth/callback/route");
+      expect(location(await GET(get("/auth/callback?code=first")))).toBe(`${ORIGIN}/auth/continue`);
+      expect(location(await GET(get("/auth/callback?code=retry")))).toBe(`${ORIGIN}/auth/continue`);
+      expect(afterTasks).toHaveLength(1); // only the first callback claimed the email
+      await afterTasks[0]!();
+      const resendCalls = fetchSpy.mock.calls.filter(([url]) => String(url) === "https://api.resend.com/emails");
+      expect(resendCalls).toHaveLength(1);
+      expect(welcomeSent.get("g1")).not.toBeNull();
+    } finally {
+      fetchSpy.mockRestore();
+      delete process.env.RESEND_API_KEY;
+      delete process.env.RESEND_FROM_EMAIL;
+    }
+  });
+
+  it("never sends a welcome email for email/password accounts and needs no second confirmation for Google", async () => {
+    process.env.RESEND_API_KEY = "re_test_key";
+    process.env.RESEND_FROM_EMAIL = "DAYBREAK <hello@tehsaad.site>";
+    welcomeSent.set("e1", null);
+    auth.exchangeCodeForSession.mockResolvedValue({ data: { session: {}, user: { id: "e1", email: "a@b.co", app_metadata: { provider: "email" } } }, error: null });
+    const { GET } = await import("@/app/auth/callback/route");
+    expect(location(await GET(get("/auth/callback?code=x")))).toBe(`${ORIGIN}/auth/continue`);
+    expect(afterTasks).toHaveLength(0);
+    delete process.env.RESEND_API_KEY;
+    delete process.env.RESEND_FROM_EMAIL;
+  });
+
+  it("marks confirmed email links so onboarding can say so", async () => {
+    auth.verifyOtp.mockResolvedValue({ data: {}, error: null });
+    const { GET } = await import("@/app/auth/callback/route");
+    expect(location(await GET(get("/auth/callback?token_hash=h&type=email")))).toBe(`${ORIGIN}/auth/continue?confirmed=1`);
+    reader = readerWith(null);
+    const cont = await (await import("@/app/auth/continue/route")).GET(get("/auth/continue?confirmed=1"));
+    expect(location(cont)).toBe(`${ORIGIN}/onboarding?confirmed=1`);
   });
 });
 

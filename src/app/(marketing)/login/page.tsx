@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AUTH_ERRORS, AUTH_NOTICES, safeNext } from "@/lib/auth/redirect";
+import { cookies } from "next/headers";
+import { AUTH_ERRORS, AUTH_NOTICES, PENDING_EMAIL_COOKIE, safeNext } from "@/lib/auth/redirect";
 import { storageMode } from "@/lib/env";
 import { PendingForm, SubmitButton } from "@/components/submit-button";
 
@@ -24,6 +25,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const notice = str(sp.notice);
   const errorText = error ? AUTH_ERRORS[error] ?? AUTH_ERRORS.unknown : null;
   const noticeText = notice ? AUTH_NOTICES[notice] : null;
+  // Offer to resend the confirmation email whenever the reader may be waiting on one.
+  const offerResend = ["check_email", "confirmation_resent"].includes(notice ?? "") || ["unconfirmed", "expired", "resend_cooldown"].includes(error ?? "");
+  const pendingEmail = offerResend ? (await cookies()).get(PENDING_EMAIL_COOKIE)?.value ?? "" : "";
 
   if (storageMode() !== "supabase") {
     return (
@@ -62,6 +66,20 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
         {errorText ? <p role="alert" className="mt-5 border border-accent/30 bg-accent-soft px-3 py-2 font-sans text-sm text-accent">{errorText}</p> : null}
         {noticeText ? <p role="status" className="mt-5 border border-forest/30 bg-forest-soft px-3 py-2 font-sans text-sm text-forest">{noticeText}</p> : null}
+
+        {offerResend ? (
+          <section aria-labelledby="resend-h" className="mt-5 border border-rule bg-paper-card p-4">
+            <h2 id="resend-h" className="font-sans text-sm font-semibold">Didn&apos;t get the confirmation email?</h2>
+            <p className="mt-1 font-sans text-xs text-muted">Check your spam folder first. You can ask for a new link once a minute; links expire after a short time.</p>
+            <PendingForm action="/auth/resend" className="mt-3 flex gap-2">
+              <label className="flex-1">
+                <span className="sr-only">Email to resend confirmation to</span>
+                <input name="email" type="email" required autoComplete="email" defaultValue={pendingEmail} className="input" placeholder="you@example.com" />
+              </label>
+              <SubmitButton variant="ghost" pendingLabel="Sending…">Resend link</SubmitButton>
+            </PendingForm>
+          </section>
+        ) : null}
 
         <a href={`/auth/google${next ? `?next=${encodeURIComponent(next)}` : ""}`} className="btn btn-ghost mt-6 w-full justify-center !py-2.5">
           <GoogleMark /> Continue with Google

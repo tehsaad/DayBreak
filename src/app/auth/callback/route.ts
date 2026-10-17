@@ -1,9 +1,10 @@
-import type { NextRequest } from "next/server";
+import { after, type NextRequest } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { log } from "@/lib/api";
 import { supabaseForRequest } from "@/lib/auth/reader";
 import { authErrorCode } from "@/lib/auth/redirect";
-import { loginRedirect, redirectTo } from "@/lib/auth/routes";
+import { loginRedirect, redirectTo, siteUrl } from "@/lib/auth/routes";
+import { claimWelcome, deliverWelcome } from "@/lib/auth/welcome";
 import { storageMode } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -33,10 +34,21 @@ export async function GET(req: NextRequest) {
   const type = params.get("type");
 
   if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) {
-      log("auth_code_exchange_failed", { code: error.code ?? null });
-      return loginRedirect(req, { error: authErrorCode(error) === "unknown" ? "expired" : authErrorCode(error) });
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error || !data?.user) {
+      log("auth_code_exchange_failed", { code: error?.code ?? null });
+      return loginRedirect(req, { error: !error || authErrorCode(error) === "unknown" ? "expired" : authErrorCode(error) });
+    }
+    // One-time welcome email after a first Google sign-in: claimed now (atomic, so retried
+    // callbacks can't double-send), delivered after the redirect so sign-in isn't slowed down.
+    const user = data.user;
+    const claim = await claimWelcome(supabase, user).catch(() => "claim_failed" as const);
+    if (claim === "claimed") {
+      const appUrl = siteUrl(req, "/").origin;
+      after(async () => {
+        const outcome = await deliverWelcome(supabase, user, appUrl).catch(() => "send_failed" as const);
+        log("auth_welcome_email", { outcome });
+      });
     }
     return redirectTo(req, "/auth/continue", 302);
   }
@@ -47,7 +59,7 @@ export async function GET(req: NextRequest) {
       log("auth_otp_verify_failed", { code: error.code ?? null });
       return loginRedirect(req, { error: "expired" });
     }
-    return redirectTo(req, "/auth/continue", 302);
+    return redirectTo(req, type === "signup" || type === "email" ? "/auth/continue?confirmed=1" : "/auth/continue", 302);
   }
 
   return loginRedirect(req, { error: "expired" });

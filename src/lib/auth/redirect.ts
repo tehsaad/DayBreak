@@ -3,6 +3,9 @@ import type { ReaderPreferences } from "../types";
 /** Short-lived cookie holding where to go after signing in (kept out of OAuth redirect URLs). */
 export const NEXT_COOKIE = "daybreak_next";
 
+/** The address a confirmation email was sent to, so the resend form can be prefilled (httpOnly, 1 hour). */
+export const PENDING_EMAIL_COOKIE = "daybreak_pending_email";
+
 /** Where an authenticated reader belongs: onboarding until it is complete, then the newspaper. */
 export function destinationFor(prefs: ReaderPreferences | null): "/onboarding" | "/newspaper" {
   return prefs?.onboardedAt ? "/newspaper" : "/onboarding";
@@ -40,12 +43,14 @@ export const AUTH_ERRORS: Record<string, string> = {
   invalid_email: "Enter a valid email address.",
   exists: "An account with that email already exists — sign in instead.",
   rate_limited: "Too many attempts. Please wait a minute and try again.",
+  resend_cooldown: "A confirmation email was sent moments ago. Please wait a minute before asking for another.",
   not_configured: "Accounts aren't configured on this deployment.",
   unknown: "Something went wrong signing you in. Please try again.",
 };
 
 export const AUTH_NOTICES: Record<string, string> = {
   check_email: "Check your inbox: we've sent a link to confirm your email address.",
+  confirmation_resent: "We've sent a new confirmation link. Check your inbox (and spam folder).",
   magic_link_sent: "Check your inbox: we've sent you a one-time sign-in link.",
   signed_out: "You've been signed out.",
 };
