@@ -18,7 +18,8 @@
     "test:e2e": "playwright test",
     "demo:learning": "tsx scripts/demo-learning.ts",
     "eval": "tsx scripts/evaluate.ts",
-    "ingest": "tsx scripts/ingest.ts"
+    "ingest": "tsx scripts/ingest.ts",
+    "check:ai": "tsx scripts/check-ai.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.82",
