@@ -205,7 +205,8 @@ export async function ingest(options: IngestOptions): Promise<IngestionRun> {
   };
   await Promise.all(Array.from({ length: Math.min(opts.concurrency, sources.length) }, worker));
 
-  const articles = dedupeArticles(results.flatMap((r) => r.items));
+  const raw = results.flatMap((r) => r.items);
+  const articles = dedupeArticles(raw);
   const inserted = articles.length ? await opts.store.upsertArticles(articles) : 0;
   const touched = results.filter((r) => !r.outcome.startsWith("skipped")).map((r) => r.health);
   if (touched.length) await opts.store.saveSourceHealth(touched);
@@ -216,6 +217,8 @@ export async function ingest(options: IngestOptions): Promise<IngestionRun> {
     finishedAt: new Date().toISOString(),
     trigger: opts.trigger,
     inserted,
+    rawItems: raw.length,
+    uniqueItems: articles.length,
     results: results.map((r) => ({ sourceId: r.sourceId, outcome: r.outcome, items: r.items.length, ms: r.ms, ...(r.error ? { error: r.error } : {}) })),
   };
   await opts.store.recordIngestionRun(run);
@@ -270,11 +273,15 @@ export async function refreshIfStale(store: Store, log?: (msg: string, data?: Re
   if (inFlight) return null;
   const last = await store.lastIngestionRun().catch(() => null);
   if (last && Date.now() - Date.parse(last.finishedAt) < LIMITS.feedFreshMinutes * 60_000) return null;
+  // Across instances: only the holder of the database lease refreshes.
+  const holder = randomUUID();
+  if (!(await store.claimIngestLock(holder, 90).catch(() => true))) return null;
   const p = refreshNews(store, { trigger: "on_demand", budgetMs: 25_000, log });
   inFlight = p;
   try {
     return (await p).run;
   } finally {
     inFlight = null;
+    await store.releaseIngestLock(holder).catch(() => undefined);
   }
 }

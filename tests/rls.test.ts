@@ -100,6 +100,16 @@ describe("Supabase migration", () => {
     expect(mine).toBe(1);
   });
 
+  it("keeps the ingest lease service-only: readers can neither take it nor read it", async () => {
+    await expect(asUser(ALICE, () => db.query("select public.claim_ingest_lock('x', 60)"))).rejects.toThrow(/permission denied/);
+    await expect(asUser(ALICE, () => db.query("select public.release_ingest_lock('x')"))).rejects.toThrow(/permission denied/);
+    const rows = await asUser(ALICE, async () => (await db.query("select * from public.ingest_lock")).rows);
+    expect(rows).toHaveLength(0);
+    // The server (table owner here, service role in production) can take it once.
+    expect((await db.query("select public.claim_ingest_lock('srv', 60) as ok")).rows[0]).toEqual({ ok: true });
+    expect((await db.query("select public.claim_ingest_lock('other', 60) as ok")).rows[0]).toEqual({ ok: false });
+  });
+
   it("prevents writing rows on behalf of another reader", async () => {
     await expect(asUser(BOB, () => db.query("insert into public.feedback_events (user_id, article_id, type) values ($1, 'a1', 'save')", [ALICE]))).rejects.toThrow(/row-level security/);
     await expect(

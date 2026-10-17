@@ -54,6 +54,9 @@ export interface Store {
   listArticles(query: ArticleQuery): Promise<Article[]>;
   getArticles(ids: string[]): Promise<Article[]>;
   getSourceHealth(): Promise<SourceHealth[]>;
+  /** A short lease so only one instance refreshes news at a time. True when acquired. */
+  claimIngestLock(holder: string, seconds: number): Promise<boolean>;
+  releaseIngestLock(holder: string): Promise<void>;
   saveSourceHealth(health: SourceHealth[]): Promise<void>;
   recordIngestionRun(run: IngestionRun): Promise<void>;
   lastIngestionRun(): Promise<IngestionRun | null>;

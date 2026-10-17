@@ -233,4 +233,7 @@ export interface IngestionRun {
   trigger: "cron" | "on_demand" | "script";
   results: { sourceId: string; outcome: FetchOutcome; items: number; error?: string; ms: number }[];
   inserted: number;
+  /** Items fetched before de-duplication, and unique articles after it. */
+  rawItems?: number;
+  uniqueItems?: number;
 }

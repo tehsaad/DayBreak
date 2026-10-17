@@ -10,7 +10,10 @@ import { generateEdition } from "../src/lib/edition/generate";
 import { recordReaderFeedback } from "../src/lib/feedback";
 import { ingest } from "../src/lib/news/ingest";
 import { renderEditionPdf } from "../src/lib/pdf/edition-pdf";
+import { buildIdf, matchScore } from "../src/lib/coverage/group";
 import { CLUSTER_SIMILARITY } from "../src/lib/rank/plan";
+import { parseExternalUrl } from "../src/lib/security/url";
+import type { Article } from "../src/lib/types";
 import { FileStore } from "../src/lib/store/file-store";
 import { getFileStore } from "../src/lib/store";
 import { headlineSimilarity, TOPICS } from "../src/lib/topics";
@@ -123,6 +126,53 @@ async function main() {
   out();
 
   // 3. PDF consistency
+  // ---- Acceptance metrics -----------------------------------------------------------
+  out("## 2b. Acceptance metrics (targets from the production-readiness brief)");
+  out();
+  const idf = buildIdf(pool);
+  const byId = new Map(pool.map((a) => [a.id, a]));
+  const asArticle = (s: Edition["stories"][number]): Article => byId.get(s.article.id) ?? ({ ...s.article, description: s.article.excerpt, collectedAt: s.article.publishedAt ?? now.toISOString(), categories: [] } as unknown as Article);
+  let dupStories = 0;
+  let topStories = 0;
+  for (const e of Object.values(editions)) {
+    const top = e.stories.slice(0, 20).map(asArticle);
+    topStories += top.length;
+    // A story counts as a duplicate when an earlier story in the same top 20 reports the same event.
+    top.forEach((a, i) => {
+      if (top.slice(0, i).some((b) => matchScore(b, a, idf).sameEvent)) dupStories++;
+    });
+  }
+  const failedLinks: string[] = [];
+  const links = Object.values(editions).flatMap((e) => e.stories.map((s) => ({ id: s.article.id, url: s.article.url })));
+  const wellFormed = links.filter((l) => parseExternalUrl(l.url) && byId.get(l.id)?.url === l.url).length;
+  const checks = await Promise.all(
+    [...new Map(links.map((l) => [l.url, l])).values()].map(async (l) => {
+      try {
+        const res = await fetch(l.url, { method: "GET", redirect: "follow", signal: AbortSignal.timeout(10_000), headers: { "user-agent": "DAYBREAK-eval/1.0 (+https://daybreak-gilt.vercel.app)" } });
+        await res.body?.cancel();
+        return { url: l.url, status: res.status };
+      } catch (err) {
+        return { url: l.url, status: 0, error: (err as Error).name };
+      }
+    }),
+  ).then((r) => {
+    for (const x of r.filter((c) => c.status < 200 || c.status >= 400)) failedLinks.push(`${new URL(x.url).hostname} → ${x.status || x.error}`);
+    return r.map((c) => c.status);
+  });
+  const okLinks = checks.filter((c) => c >= 200 && c < 400).length;
+  const blocked = checks.filter((c) => c === 401 || c === 403 || c === 429).length;
+  out("| Metric | Target | Measured | Sample |");
+  out("|---|---:|---:|---|");
+  out(`| Same-event duplicates among the top 20 stories | under 10% | ${pct(dupStories / Math.max(topStories, 1))} | ${topStories} stories across 3 editions, Full Coverage same-event matcher |`);
+  out(`| Story links that are the publisher's own feed URL, well-formed https | 98% | ${pct(wellFormed / Math.max(links.length, 1))} | ${links.length} links |`);
+  out(`| Story links that are broken (HTTP 404/410) | 0 | ${checks.filter((c) => c === 404 || c === 410).length} | same URLs |`);
+  out(`| Story links that load (HTTP 2xx/3xx after redirects) | 98% | ${pct(okLinks / Math.max(checks.length, 1))} | ${checks.length} unique URLs, live GET from this machine; ${blocked} refused automated requests (401/403/429), ${checks.filter((c) => c === 0).length} timed out or failed |`);
+  out();
+  if (failedLinks.length) out(`Links that did not load: ${[...new Set(failedLinks)].join("; ")}.`);
+  out();
+  out("Relevance as rated by test readers and the summary-claim audit cannot be computed by this script: see the notes in “Not measured”.");
+  out();
+
   out("## 3. PDF and website consistency");
   out();
   for (const [name, e] of Object.entries(editions)) {
@@ -149,6 +199,7 @@ async function main() {
   out();
   out("## Not measured");
   out();
+  out("- **Relevance rated by human test readers** (target 80%): needs people. The proxy above (share of stories in followed sections) is not a substitute.");
   out("- **AI summary faithfulness** on live data: requires an LLM API key. The mechanism (Zod validation, invented-id rejection, numbers-must-appear-in-source check, per-item fallback) is tested with a mock model in `tests/ai.test.ts`.");
   out("- **Supabase end-to-end**: RLS, immutability triggers and idempotent edition creation are tested against the real migration on Postgres (PGlite) in `tests/rls.test.ts`; a hosted Supabase project was not available.");
   writeFileSync(path.resolve("docs/EVALUATION.md"), lines.join("\n") + "\n");

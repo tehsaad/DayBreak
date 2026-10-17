@@ -118,6 +118,16 @@ describe("background summaries", () => {
   });
 });
 
+describe("hedge preservation", () => {
+  it("rejects summaries that turn a reported claim into fact (real Groq output, 17 Oct)", async () => {
+    const { dropsHedge } = await import("@/lib/ai/summaries");
+    const src = "United Arab Emirates will reportedly resume payments to Yemeni forces as gains by Iran-backed Houthi fighters alarm Gulf state rulers";
+    expect(dropsHedge("The UAE is set to resume payments to Yemeni forces, a move prompted by Houthi advances that alarm Gulf leaders.", src)).toBe(true);
+    expect(dropsHedge("The UAE will reportedly resume payments to Yemeni forces after Houthi advances.", src)).toBe(false);
+    expect(dropsHedge("Sonay Kartal reached the Wuhan Open final.", "Britain's Sonay Kartal beats Jelena Ostapenko to reach the Wuhan Open final.")).toBe(false);
+  });
+});
+
 describe("feed error messages", () => {
   it("explain what went wrong and what to do", () => {
     expect(describeFeedError("HTTP 403")).toMatch(/^Blocked by the publisher \(HTTP 403\)/);
@@ -126,5 +136,17 @@ describe("feed error messages", () => {
     expect(describeFeedError("Unexpected content type text/html")).toMatch(/Not a usable feed/);
     expect(describeFeedError("The operation was aborted due to timeout")).toMatch(/Timed out/);
     expect(describeFeedError("getaddrinfo ENOTFOUND example.invalid")).toMatch(/Network error/);
+  });
+});
+
+describe("ingest lease", () => {
+  it("lets only one refresh hold the lease until it is released or expires", async () => {
+    const s = new FileStore(path.join(mkdtempSync(path.join(tmpdir(), "daybreak-lock-")), "db.json"));
+    expect(await s.claimIngestLock("a", 60)).toBe(true);
+    expect(await s.claimIngestLock("b", 60)).toBe(false);
+    await s.releaseIngestLock("b"); // not the holder: no effect
+    expect(await s.claimIngestLock("b", 60)).toBe(false);
+    await s.releaseIngestLock("a");
+    expect(await s.claimIngestLock("b", 60)).toBe(true);
   });
 });

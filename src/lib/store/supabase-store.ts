@@ -172,6 +172,16 @@ export class SupabaseStore implements Store {
   lastIngestionRun() {
     return this.service ? this.pg_lastIngestionRun() : this.fallbackNews.lastIngestionRun();
   }
+  async claimIngestLock(holder: string, seconds: number) {
+    if (!this.service) return this.fallbackNews.claimIngestLock(holder, seconds);
+    const { data, error } = await this.svc.rpc("claim_ingest_lock", { p_holder: holder, p_seconds: seconds });
+    // Fail open if the lock function is unavailable (e.g. migration not yet applied): ingestion is idempotent.
+    return error ? true : data === true;
+  }
+  async releaseIngestLock(holder: string) {
+    if (!this.service) return this.fallbackNews.releaseIngestLock(holder);
+    await this.svc.rpc("release_ingest_lock", { p_holder: holder });
+  }
   getCachedSummaries(ids: string[], model: string) {
     return this.service ? this.pg_getCachedSummaries(ids, model) : this.fallbackNews.getCachedSummaries(ids, model);
   }
@@ -289,6 +299,8 @@ export class SupabaseStore implements Store {
         trigger: run.trigger,
         inserted: run.inserted,
         results: run.results,
+        raw_items: run.rawItems ?? null,
+        unique_items: run.uniqueItems ?? null,
       }),
       "ingestion run insert",
     );
@@ -305,6 +317,8 @@ export class SupabaseStore implements Store {
       trigger: r.trigger as IngestionRun["trigger"],
       inserted: r.inserted as number,
       results: r.results as IngestionRun["results"],
+      rawItems: (r.raw_items as number | null) ?? undefined,
+      uniqueItems: (r.unique_items as number | null) ?? undefined,
     };
   }
 

@@ -1,3 +1,4 @@
+import { summarizeRun } from "@/lib/news/ingest";
 import { json } from "@/lib/api";
 import { getServiceStore } from "@/lib/store";
 import { ALL_SOURCES } from "@/lib/news/sources";
@@ -13,7 +14,21 @@ export async function GET() {
   // Public, non-personal data: let the CDN serve it for a minute.
   return json(
     {
-    lastRun: last ? { finishedAt: last.finishedAt, trigger: last.trigger, inserted: last.inserted } : null,
+    lastRun: last
+      ? {
+          finishedAt: last.finishedAt,
+          trigger: last.trigger,
+          ...summarizeRun(last),
+          rawItems: last.rawItems ?? null,
+          uniqueItems: last.uniqueItems ?? null,
+          duplicatesMerged: last.rawItems != null && last.uniqueItems != null ? last.rawItems - last.uniqueItems : null,
+        }
+      : null,
+    sourceHealth: {
+      healthy: health.filter((h) => h.lastStatus === "ok" || h.lastStatus === "not_modified" || h.lastStatus === "empty").length,
+      failing: health.filter((h) => h.lastStatus === "error" || h.lastStatus === "rate_limited").length,
+      lastSuccessAt: health.map((h) => h.lastSuccessAt).filter((t): t is string => Boolean(t)).sort().at(-1) ?? null,
+    },
     sources: ALL_SOURCES.map((s) => {
       const h = byId.get(s.id);
       const status = s.kind === "gnews" && !gnewsApiKey() ? "off" : s.status;

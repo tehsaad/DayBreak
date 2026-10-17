@@ -155,6 +155,17 @@ export class FileStore implements Store {
     });
   }
 
+  // Single process in file mode, so an in-memory lease is enough.
+  private lease: { holder: string; until: number } | null = null;
+  async claimIngestLock(holder: string, seconds: number): Promise<boolean> {
+    if (this.lease && this.lease.until > Date.now()) return false;
+    this.lease = { holder, until: Date.now() + seconds * 1000 };
+    return true;
+  }
+  async releaseIngestLock(holder: string): Promise<void> {
+    if (this.lease?.holder === holder) this.lease = null;
+  }
+
   lastIngestionRun(): Promise<IngestionRun | null> {
     return this.read((data) => data.runs[0] ?? null);
   }
