@@ -18,7 +18,7 @@ export const REQUIREMENTS = [
   { label: "Cron secret", anyOf: ["CRON_SECRET"] },
   {
     label: "LLM provider credentials",
-    anyOf: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "AI_GATEWAY_API_KEY", "LLM_PROVIDER"],
+    anyOf: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_AI_STUDIO_API_KEY", "AI_GATEWAY_API_KEY", "LLM_PROVIDER"],
   },
 ];
 
@@ -35,6 +35,9 @@ export function parseEnvNames(text) {
   return names;
 }
 
+/** Optional variables: reported, never required. */
+export const OPTIONAL = [{ label: "GNews API key (extra news source)", anyOf: ["GNEWS_API_KEY"] }];
+
 export function checkEnv(names) {
   const missing = REQUIREMENTS.filter((r) => !r.anyOf.some((n) => names.has(n)));
   const exposed = [...names].filter((n) => FORBIDDEN_PUBLIC.test(n));
@@ -47,6 +50,10 @@ function main() {
   for (const r of REQUIREMENTS) {
     const found = r.anyOf.find((n) => names.has(n));
     console.log(`${found ? "✓" : "✗"} ${r.label}${found ? ` (${found})` : ` — set one of: ${r.anyOf.join(", ")}`}`);
+  }
+  for (const r of OPTIONAL) {
+    const found = r.anyOf.find((n) => names.has(n));
+    console.log(`${found ? "✓" : "–"} ${r.label}${found ? ` (${found})` : " — optional, not set"}`);
   }
   for (const n of exposed) console.log(`✗ ${n} must not be a NEXT_PUBLIC_ variable: it would be shipped to every browser.`);
   if (!ok) {

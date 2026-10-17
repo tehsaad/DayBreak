@@ -1,3 +1,4 @@
+import { gnewsApiKey } from "../env";
 import type { TopicId } from "../topics";
 import type { SourceStatus } from "../types";
 
@@ -26,7 +27,42 @@ export interface SourceDef {
    * local when it actually mentions the country.
    */
   localByDefault?: boolean;
+  /** "rss" (default) or "gnews" (API, only active when GNEWS_API_KEY is set). */
+  kind?: "rss" | "gnews";
+  /** GNews top-headlines parameters. */
+  gnews?: { category: string; country?: string };
 }
+
+const GNEWS_HOME = "https://gnews.io";
+const gnews = (id: string, name: string, category: string, topics: TopicId[], region = "GLOBAL", country?: string): SourceDef => ({
+  id: `gnews-${id}`,
+  publisher: "GNews",
+  name: `GNews — ${name}`,
+  feedUrl: "https://gnews.io/api/v4/top-headlines",
+  homepage: GNEWS_HOME,
+  topics,
+  region,
+  status: "active",
+  priority: 2,
+  kind: "gnews",
+  gnews: { category, country },
+  localByDefault: Boolean(country),
+});
+
+/**
+ * GNews categories. Each is fetched at most every GNEWS_FRESH_MINUTES (default 180), so a full
+ * day costs about 64 requests — inside the free plan's 100/day.
+ */
+export const GNEWS_SOURCES: SourceDef[] = [
+  gnews("pk-nation", "Pakistan", "nation", ["pakistan"], "PK", "pk"),
+  gnews("pk-business", "Pakistan business", "business", ["business"], "PK", "pk"),
+  gnews("world", "World", "world", ["world"]),
+  gnews("technology", "Technology", "technology", ["ai-tech"]),
+  gnews("science", "Science", "science", ["science"]),
+  gnews("health", "Health", "health", ["health"]),
+  gnews("sports", "Sports", "sports", ["sports"]),
+  gnews("entertainment", "Entertainment", "entertainment", ["culture"]),
+];
 
 export const SOURCES: SourceDef[] = [
   // International general news
@@ -93,10 +129,14 @@ export const SOURCES: SourceDef[] = [
   { id: "guardian-development", publisher: "The Guardian", name: "The Guardian — Global development", feedUrl: "https://www.theguardian.com/global-development/rss", homepage: "https://www.theguardian.com/global-development", topics: ["society"], region: "GLOBAL", status: "active", priority: 2 },
 ];
 
-export const SOURCE_BY_ID: Record<string, SourceDef> = Object.fromEntries(SOURCES.map((s) => [s.id, s]));
+/** RSS feeds plus the GNews sources (the latter only fetched when GNEWS_API_KEY is set). */
+export const ALL_SOURCES: SourceDef[] = [...SOURCES, ...GNEWS_SOURCES];
+
+export const SOURCE_BY_ID: Record<string, SourceDef> = Object.fromEntries(ALL_SOURCES.map((s) => [s.id, s]));
 
 export function activeSources(): SourceDef[] {
-  return SOURCES.filter((s) => s.status === "active");
+  const hasGNews = Boolean(gnewsApiKey());
+  return ALL_SOURCES.filter((s) => s.status === "active" && (s.kind !== "gnews" || hasGNews));
 }
 
 /** Distinct publishers, for the source-exclusion control in onboarding/settings. */

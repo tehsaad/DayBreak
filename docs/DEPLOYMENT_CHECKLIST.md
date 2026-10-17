@@ -2,6 +2,8 @@
 
 Production deploys go through GitHub Actions (`.github/workflows/deploy-production.yml`). They run only after CI passes on `main`, and only once the steps below are complete. The full explanation is in the README under [CI/CD and deploying to Vercel](../README.md#cicd-and-deploying-to-vercel).
 
+Where each key goes: [`docs/API_KEYS.md`](API_KEYS.md).
+
 ## 1. Services
 
 - [ ] Supabase project created; migration `supabase/migrations/20261017000000_daybreak_init.sql` applied (`supabase db push`, or the SQL editor).
@@ -10,13 +12,14 @@ Production deploys go through GitHub Actions (`.github/workflows/deploy-producti
 
 ## 2. Vercel project
 
-- [ ] `tehsaad/DayBreak` imported in Vercel (the GitHub integration is installed, so pull requests get Preview deployments).
+- [x] Vercel project `daybreak` (team `teh-saad`) created and connected to `tehsaad/DayBreak`, with Node 22.x and production branch `main`.
 - [ ] Production environment variables set. Names must match exactly:
   - [ ] `NEXT_PUBLIC_SUPABASE_URL`
   - [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` (or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`)
   - [ ] `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`): **server-only**, marked Sensitive, **never** `NEXT_PUBLIC_…`
-  - [ ] `CRON_SECRET` (e.g. `openssl rand -hex 32`)
-  - [ ] `ANTHROPIC_API_KEY`, or another provider's key, with `LLM_PROVIDER` / `LLM_MODEL` as needed
+  - [x] `CRON_SECRET` (already set in Vercel Production)
+  - [ ] An AI key: `GEMINI_API_KEY` (Gemini / Google AI Studio; also accepted as `GOOGLE_GENERATIVE_AI_API_KEY` or `GOOGLE_AI_STUDIO_API_KEY`), or `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, with `LLM_PROVIDER` / `LLM_MODEL` as needed
+  - [ ] Optional: `GNEWS_API_KEY` (extra GNews headlines)
   - [ ] `NEWS_MODE` unset, or `live`
 - [ ] Check locally (prints names only): `npx vercel@62.2.0 env ls production | node scripts/ci/check-vercel-env.mjs`
 - [ ] Note the Project ID and Team ID, and create an access token.

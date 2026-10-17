@@ -55,6 +55,9 @@ describe("deploy gate: Vercel environment check", () => {
   it("accepts the alternative variable names the app reads", () => {
     const alt = "NEXT_PUBLIC_SUPABASE_URL\nNEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY\nSUPABASE_SECRET_KEY\nCRON_SECRET\nAI_GATEWAY_API_KEY\n";
     expect(checkEnv(parseEnvNames(alt)).ok).toBe(true);
+    const gemini = "NEXT_PUBLIC_SUPABASE_URL\nNEXT_PUBLIC_SUPABASE_ANON_KEY\nSUPABASE_SERVICE_ROLE_KEY\nCRON_SECRET\nGEMINI_API_KEY\nGNEWS_API_KEY\n";
+    expect(checkEnv(parseEnvNames(gemini)).ok).toBe(true);
+    expect(checkEnv(parseEnvNames("NEXT_PUBLIC_GNEWS_API_KEY\n")).exposed).toEqual(["NEXT_PUBLIC_GNEWS_API_KEY"]);
   });
 });
 

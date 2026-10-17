@@ -97,7 +97,7 @@ export function normalizeItem(item: RawFeedItem, source: SourceDef, now: Date = 
     url: link,
     title,
     description,
-    publisher: source.publisher,
+    publisher: item.publisher ? truncateText(cleanText(item.publisher), 80) : source.publisher,
     sourceId: source.id,
     author,
     imageUrl: pickImage(item.imageCandidates),

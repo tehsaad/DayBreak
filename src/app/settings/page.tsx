@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { LearnedInterests } from "@/components/learned-interests";
 import { SettingsForm } from "@/components/settings-form";
 import { formatTime } from "@/components/paper/format";
-import { llmConfig, llmStatusNote, newsMode, storageMode } from "@/lib/env";
-import { SOURCES } from "@/lib/news/sources";
+import { gnewsApiKey, llmConfig, llmStatusNote, newsMode, storageMode } from "@/lib/env";
+import { ALL_SOURCES, SOURCES } from "@/lib/news/sources";
 import { FEEDBACK_WEIGHTS, LEARNING, computeLearnedProfile } from "@/lib/rank/learning";
 import { WEIGHTS } from "@/lib/rank/score";
 import { requireReader } from "@/lib/server/page-reader";
@@ -73,7 +73,7 @@ export default async function SettingsPage() {
       <section id="sources" aria-labelledby="sources-h" className="scroll-mt-24 border-t border-rule py-8">
         <h2 id="sources-h" className="font-display text-2xl font-bold">Sources</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          {SOURCES.length} feeds from {new Set(SOURCES.map((s) => s.publisher)).size} publishers. News mode: <strong>{newsMode() === "sample" ? "sample data (NEWS_MODE=sample)" : "live feeds"}</strong>.
+          {SOURCES.length} RSS feeds from {new Set(SOURCES.map((s) => s.publisher)).size} publishers, plus GNews top headlines {gnewsApiKey() ? "(enabled)" : "(off until GNEWS_API_KEY is set)"}. News mode: <strong>{newsMode() === "sample" ? "sample data (NEWS_MODE=sample)" : "live feeds"}</strong>.
           {lastRun ? ` Last refresh ${formatTime(lastRun.finishedAt, prefs.timezone)} (${lastRun.trigger.replace("_", "-")}), ${lastRun.inserted} new articles.` : " Feeds have not been fetched yet."}
         </p>
         <div className="mt-4 overflow-x-auto">
@@ -87,15 +87,16 @@ export default async function SettingsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-rule">
-              {SOURCES.map((s) => {
+              {ALL_SOURCES.map((s) => {
                 const h = healthById.get(s.id);
+                const off = s.kind === "gnews" && !gnewsApiKey();
                 return (
                   <tr key={s.id}>
                     <td className="py-1.5 pr-3"><a className="hover:underline" href={s.homepage} target="_blank" rel="noopener noreferrer">{s.name}</a></td>
                     <td className="py-1.5 pr-3 text-muted">{s.region === "GLOBAL" ? "International" : regionName(s.region)}</td>
                     <td className="py-1.5 pr-3 text-muted">{h?.lastSuccessAt ? formatTime(h.lastSuccessAt, prefs.timezone) : "—"}</td>
                     <td className={`py-1.5 ${STATUS_STYLE[h?.lastStatus ?? ""] ?? "text-muted"}`} title={h?.lastError ?? undefined}>
-                      {h?.lastStatus ? `${h.lastStatus.replace("_", " ")}${h.lastStatus === "ok" ? ` · ${h.lastItemCount} items` : ""}` : "not fetched yet"}
+                      {off ? "off · needs GNEWS_API_KEY" : h?.lastStatus ? `${h.lastStatus.replace("_", " ")}${h.lastStatus === "ok" ? ` · ${h.lastItemCount} items` : ""}` : "not fetched yet"}
                     </td>
                   </tr>
                 );

@@ -12,12 +12,25 @@ const DEFAULT_MODELS: Record<LlmProvider, string> = {
   gateway: "anthropic/claude-haiku-5.5",
 };
 
-const KEY_VARS: Record<LlmProvider, string> = {
-  anthropic: "ANTHROPIC_API_KEY",
-  openai: "OPENAI_API_KEY",
-  google: "GOOGLE_GENERATIVE_AI_API_KEY",
-  gateway: "AI_GATEWAY_API_KEY",
+/**
+ * Accepted key names per provider, first match wins. Gemini keys come from Google AI Studio, so
+ * GEMINI_API_KEY and GOOGLE_AI_STUDIO_API_KEY are aliases of the AI SDK's own variable name.
+ */
+export const KEY_VARS: Record<LlmProvider, string[]> = {
+  anthropic: ["ANTHROPIC_API_KEY"],
+  openai: ["OPENAI_API_KEY"],
+  google: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_AI_STUDIO_API_KEY"],
+  gateway: ["AI_GATEWAY_API_KEY"],
 };
+
+/** The API key for a provider, from whichever accepted variable is set (server-only). */
+export function providerApiKey(provider: LlmProvider): string | undefined {
+  for (const name of KEY_VARS[provider]) {
+    const v = value(name);
+    if (v) return v;
+  }
+  return undefined;
+}
 
 function value(name: string): string | undefined {
   const v = process.env[name];
@@ -42,8 +55,9 @@ export function llmConfig(): LlmConfig | null {
   if (requested === "none" || requested === "off") return null;
   const candidates: LlmProvider[] = requested && requested in KEY_VARS ? [requested as LlmProvider] : ["anthropic", "openai", "google", "gateway"];
   for (const provider of candidates) {
-    const oidc = provider === "gateway" && (Boolean(value("VERCEL_OIDC_TOKEN")) || (requested === "gateway" && Boolean(value("VERCEL"))));
-    const hasKey = Boolean(value(KEY_VARS[provider])) || oidc;
+    // OIDC never selects the gateway on its own: it must be requested with LLM_PROVIDER=gateway.
+    const oidc = provider === "gateway" && requested === "gateway" && (Boolean(value("VERCEL_OIDC_TOKEN")) || Boolean(value("VERCEL")));
+    const hasKey = Boolean(providerApiKey(provider)) || oidc;
     if (hasKey) {
       return {
         provider,
@@ -61,8 +75,8 @@ export function llmStatusNote(): string {
   const requested = value("LLM_PROVIDER")?.toLowerCase();
   if (requested === "none" || requested === "off") return "AI features are switched off (LLM_PROVIDER=none).";
   if (requested === "gateway") return "LLM_PROVIDER is \"gateway\" but there is no AI_GATEWAY_API_KEY, and Vercel OIDC is only available on Vercel deployments or after `vercel env pull`.";
-  if (requested && requested in KEY_VARS && !value(KEY_VARS[requested as LlmProvider])) {
-    return `LLM_PROVIDER is "${requested}" but ${KEY_VARS[requested as LlmProvider]} is not set.`;
+  if (requested && requested in KEY_VARS && !providerApiKey(requested as LlmProvider)) {
+    return `LLM_PROVIDER is "${requested}" but none of ${KEY_VARS[requested as LlmProvider].join(" / ")} is set.`;
   }
   return "No language-model API key is configured, so summaries come from publishers' own descriptions and analysis is assembled from article metadata.";
 }
@@ -92,6 +106,11 @@ export function newsMode(): "live" | "sample" {
   return value("NEWS_MODE")?.toLowerCase() === "sample" ? "sample" : "live";
 }
 
+/** GNews API key (https://gnews.io). When set, GNews top headlines join the RSS sources. */
+export function gnewsApiKey(): string | undefined {
+  return value("GNEWS_API_KEY");
+}
+
 export function cronSecret(): string | undefined {
   return value("CRON_SECRET");
 }
@@ -110,6 +129,8 @@ export function clampInt(raw: string | undefined, min: number, max: number, fall
 export const LIMITS = {
   /** Re-fetch a feed at most this often. */
   feedFreshMinutes: clampInt(process.env.FEED_FRESH_MINUTES, 5, 720, 30),
+  /** Re-fetch each GNews category at most this often (8 categories × 8/day ≈ 64 of the free 100 requests). */
+  gnewsFreshMinutes: clampInt(process.env.GNEWS_FRESH_MINUTES, 60, 1440, 180),
   /** Before generating a paper, refresh news if the newest ingestion is older than this. */
   poolStaleMinutes: clampInt(process.env.POOL_STALE_MINUTES, 10, 1440, 90),
   /** Minimum seconds between regenerations for one reader. */

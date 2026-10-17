@@ -1,5 +1,5 @@
 import { json } from "@/lib/api";
-import { llmConfig, newsMode, storageMode } from "@/lib/env";
+import { gnewsApiKey, llmConfig, newsMode, storageMode } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -12,5 +12,6 @@ export async function GET() {
     news: newsMode(),
     ai: llm ? { provider: llm.provider, model: llm.model } : null,
     cronSecretConfigured: Boolean(process.env.CRON_SECRET),
+    gnewsConfigured: Boolean(gnewsApiKey()),
   });
 }

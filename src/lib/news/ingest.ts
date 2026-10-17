@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { LIMITS } from "../env";
+import { gnewsApiKey, LIMITS } from "../env";
 import { safeFetch } from "../security/safe-fetch";
 import type { Store } from "../store/types";
 import type { Article, FetchOutcome, IngestionRun, SourceHealth } from "../types";
 import { dedupeArticles, normalizeItem } from "./normalize";
+import { gnewsRequestUrl, parseGNews, redactKey } from "./gnews";
 import { parseFeed } from "./parse";
 import { activeSources, type SourceDef } from "./sources";
 
@@ -45,7 +46,37 @@ interface SourceResult {
   health: SourceHealth;
 }
 
+async function fetchGNews(source: SourceDef, health: SourceHealth, opts: Required<Pick<IngestOptions, "timeoutMs">> & IngestOptions, now: Date): Promise<SourceResult> {
+  const started = Date.now();
+  const h: SourceHealth = { ...health, lastFetchedAt: now.toISOString() };
+  const key = gnewsApiKey();
+  const fail = (outcome: FetchOutcome, message: string, countFailure = true): SourceResult => {
+    const error = redactKey(message, key).slice(0, 300);
+    return { sourceId: source.id, outcome, items: [], error, ms: Date.now() - started, health: { ...h, lastStatus: outcome, lastError: error, consecutiveFailures: countFailure ? h.consecutiveFailures + 1 : h.consecutiveFailures } };
+  };
+  if (!key) return fail("error", "GNEWS_API_KEY is not set", false);
+  try {
+    const res = await safeFetch(gnewsRequestUrl(source, key), { timeoutMs: opts.timeoutMs, headers: { accept: "application/json" }, accept: ["application/json"], fetchImpl: opts.fetchImpl, maxBytes: 1_000_000, maxRedirects: 0 });
+    if (res.status === 429) return fail("rate_limited", "GNews daily request quota reached (HTTP 429)");
+    if (res.status === 401 || res.status === 403) return fail("error", `GNews rejected the API key (HTTP ${res.status})`);
+    if (res.status !== 200) return fail("error", `GNews HTTP ${res.status}`);
+    const items = parseGNews(res.body.toString("utf8"))
+      .map((i) => normalizeItem(i, source, now))
+      .filter((a): a is Article => a !== null);
+    return {
+      sourceId: source.id,
+      outcome: items.length ? "ok" : "empty",
+      items,
+      ms: Date.now() - started,
+      health: { ...h, lastSuccessAt: now.toISOString(), lastStatus: items.length ? "ok" : "empty", lastError: null, consecutiveFailures: 0, lastItemCount: items.length, etag: null, lastModified: null },
+    };
+  } catch (err) {
+    return fail("error", err instanceof Error ? err.message : String(err));
+  }
+}
+
 async function fetchSource(source: SourceDef, health: SourceHealth, opts: Required<Pick<IngestOptions, "timeoutMs">> & IngestOptions, now: Date): Promise<SourceResult> {
+  if (source.kind === "gnews") return fetchGNews(source, health, opts, now);
   const started = Date.now();
   const h: SourceHealth = { ...health, lastFetchedAt: now.toISOString() };
   const headers: Record<string, string> = { accept: "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5" };
@@ -130,7 +161,10 @@ export async function ingest(options: IngestOptions): Promise<IngestionRun> {
       const health = healthById.get(source.id) ?? emptyHealth(source.id);
       const lastOk = health.lastSuccessAt ? Date.parse(health.lastSuccessAt) : 0;
       const lastTry = health.lastFetchedAt ? Date.parse(health.lastFetchedAt) : 0;
-      if (!opts.force && lastOk && now.getTime() - lastOk < LIMITS.feedFreshMinutes * 60_000 && health.consecutiveFailures === 0) {
+      // GNews has a daily request quota, so its interval applies even to forced refreshes.
+      const isGNews = source.kind === "gnews";
+      const freshMinutes = isGNews ? LIMITS.gnewsFreshMinutes : LIMITS.feedFreshMinutes;
+      if ((!opts.force || isGNews) && lastOk && now.getTime() - lastOk < freshMinutes * 60_000 && health.consecutiveFailures === 0) {
         results.push({ sourceId: source.id, outcome: "skipped_fresh", items: [], ms: 0, health });
         continue;
       }

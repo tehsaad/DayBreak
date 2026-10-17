@@ -31,7 +31,7 @@ DAYBREAK gathers real reporting from 43 RSS feeds (21 publishers, including Dawn
 10. [Project layout](#project-layout)
 11. [Known limitations](#known-limitations)
 
-Also see [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) (five-minute Loom script), [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) and [`docs/EVALUATION.md`](docs/EVALUATION.md) (measured results).
+**Adding API keys:** see [`docs/API_KEYS.md`](docs/API_KEYS.md). Also see [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) (five-minute Loom script), [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) and [`docs/EVALUATION.md`](docs/EVALUATION.md) (measured results).
 
 ---
 
@@ -133,7 +133,8 @@ Copy [`.env.example`](.env.example) to `.env.local` locally, or set these variab
 | `SUPABASE_SERVICE_ROLE_KEY` | for accounts | **Server-only.** Used for shared news data and cron. `SUPABASE_SECRET_KEY` is accepted instead. Never give it a `NEXT_PUBLIC_` prefix: those values are inlined into browser bundles, and the deploy gate refuses any `NEXT_PUBLIC_…SERVICE_ROLE/SECRET/API_KEY/TOKEN` variable |
 | `LLM_PROVIDER` | optional | `anthropic`, `openai`, `google`, `gateway` or `none`. Unset: the first provider whose key is present |
 | `LLM_MODEL` | optional | Model id. Defaults: `claude-haiku-5-5` (Anthropic), `anthropic/claude-haiku-5.5` (AI Gateway). Set it explicitly for OpenAI or Google |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `AI_GATEWAY_API_KEY` | optional | Provider key. On Vercel, `LLM_PROVIDER=gateway` needs **no key**: the AI Gateway authenticates with the deployment's OIDC token. Locally, use `vercel env pull` to get `VERCEL_OIDC_TOKEN` |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `AI_GATEWAY_API_KEY` | optional | Provider key. On Vercel, `LLM_PROVIDER=gateway` needs **no key**: the AI Gateway authenticates with the deployment's OIDC token. Locally, set `LLM_PROVIDER=gateway` and use `vercel env pull` to get `VERCEL_OIDC_TOKEN`. Gemini / Google AI Studio keys work under `GOOGLE_GENERATIVE_AI_API_KEY`, `GEMINI_API_KEY` or `GOOGLE_AI_STUDIO_API_KEY` |
+| `GNEWS_API_KEY` | optional | [GNews](https://gnews.io) key. Adds GNews top headlines (Pakistan national and business, world, technology, science, health, sports, entertainment) to the RSS sources. Each category is fetched at most every `GNEWS_FRESH_MINUTES` (default 180), about 64 of the free plan's 100 requests a day. The key is never logged |
 | `LLM_TIMEOUT_MS`, `LLM_MAX_OUTPUT_TOKENS` | optional | Defaults 30000 and 4000 |
 | `CRON_SECRET` | for cron | Random string. Vercel sends it as `Authorization: Bearer …`. Cron routes refuse to run without it |
 | `CRON_USE_AI` | optional | `false` to prepare scheduled editions without LLM calls |

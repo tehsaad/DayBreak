@@ -10,6 +10,8 @@ export interface RawFeedItem {
   author: string | null;
   categories: string[];
   imageCandidates: { url: string; width: number }[];
+  /** Real publisher when the source is an aggregator (GNews). */
+  publisher?: string;
 }
 
 export interface ParsedFeed {
