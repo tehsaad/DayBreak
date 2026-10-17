@@ -187,3 +187,30 @@ describe("health endpoint", () => {
     delete process.env.ANTHROPIC_API_KEY;
   });
 });
+
+describe("Explore APIs", () => {
+  it("follows a topic and requires completed onboarding to generate", async () => {
+    const { POST } = await import("@/app/api/topics/route");
+    const res = await POST(req("POST", { topic: "climate", follow: true }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).sections).toContain("climate");
+    expect((await POST(req("POST", { topic: "astrology", follow: true }))).status).toBe(400);
+
+    const CAROL = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    await store.savePreferences(CAROL, { ...PROFILES.climateReader, onboardedAt: null });
+    as(CAROL);
+    const gen = await (await import("@/app/api/editions/route")).POST(req("POST", { mode: "ensure" }));
+    expect(gen.status).toBe(409);
+  });
+
+  it("saves a stored article that isn't in any edition", async () => {
+    const { sampleArticles } = await import("@/lib/news/sample");
+    await store.upsertArticles(sampleArticles().slice(0, 3));
+    const [article] = await store.listArticles({ limit: 1 });
+    const { POST, GET } = await import("@/app/api/bookmarks/route");
+    expect((await POST(req("POST", { articleId: article!.id }))).status).toBe(200);
+    const saved = (await (await GET()).json()).bookmarks as { articleId: string; editionId: string | null }[];
+    expect(saved.find((b) => b.articleId === article!.id)?.editionId).toBeNull();
+    expect((await POST(req("POST", { articleId: "nope" }))).status).toBe(404);
+  });
+});

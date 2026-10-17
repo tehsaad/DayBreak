@@ -62,7 +62,7 @@ describe("deploy gate: Vercel environment check", () => {
 });
 
 describe("deploy gate: health smoke test", () => {
-  const good = { ok: true, storage: "supabase", news: "live", ai: { provider: "anthropic", model: "claude-haiku-5-5" }, cronSecretConfigured: true };
+  const good = { ok: true, storage: "supabase", sharedNews: "supabase", news: "live", ai: { provider: "anthropic", model: "claude-haiku-5-5" }, cronSecretConfigured: true };
 
   it("passes a fully configured deployment", () => {
     expect(checkHealth(good)).toEqual({ ok: true, problems: [] });
@@ -70,8 +70,10 @@ describe("deploy gate: health smoke test", () => {
   });
 
   it("fails demo-mode, sample-news, no-AI or no-cron deployments", () => {
-    const bad = { ok: true, storage: "demo", news: "sample", ai: null, cronSecretConfigured: false };
-    expect(checkHealth(bad).problems).toHaveLength(4);
+    const bad = { ok: true, storage: "demo", sharedNews: "file", news: "sample", ai: null, cronSecretConfigured: false };
+    expect(checkHealth(bad).problems).toHaveLength(5);
+    // Accounts work but the shared news pool isn't durable without the service-role key.
+    expect(checkHealth({ ...good, sharedNews: "instance-cache" }).problems).toEqual([expect.stringMatching(/SUPABASE_SERVICE_ROLE_KEY missing/)]);
     expect(run("check-health.mjs", JSON.stringify(bad)).code).toBe(1);
   });
 

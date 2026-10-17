@@ -1,5 +1,5 @@
 import { json } from "@/lib/api";
-import { gnewsApiKey, llmConfig, newsMode, storageMode } from "@/lib/env";
+import { gnewsApiKey, llmConfig, newsMode, sharedNewsStorage, storageMode } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +9,8 @@ export async function GET() {
   return json({
     ok: true,
     storage: storageMode(),
+    // Where the shared news pool lives: "supabase" needs SUPABASE_SERVICE_ROLE_KEY.
+    sharedNews: sharedNewsStorage(),
     news: newsMode(),
     ai: llm ? { provider: llm.provider, model: llm.model } : null,
     cronSecretConfigured: Boolean(process.env.CRON_SECRET),

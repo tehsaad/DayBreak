@@ -11,8 +11,10 @@ test("reader journey: onboard, read, give feedback, regenerate, download PDF, op
   page.on("pageerror", (e) => consoleErrors.push(e.message));
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "DAYBREAK", level: 1 })).toBeVisible();
-  await page.getByRole("link", { name: /Design your paper/ }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("news that matters to you");
+  // The public homepage previews real (or clearly labelled sample) stories.
+  await expect(page.locator("#preview figure")).toBeVisible();
+  await page.getByRole("link", { name: /Get started/ }).first().click();
 
   // Step 1: name
   await expect(page.getByRole("heading", { name: "Welcome to DAYBREAK" })).toBeVisible();
@@ -117,6 +119,25 @@ test("reader journey: onboard, read, give feedback, regenerate, download PDF, op
 
   await page.goto("/explore");
   await expect(page.getByRole("heading", { name: "One story, many newsrooms" })).toBeVisible();
+  // Follow a new topic from Explore, and react to a story there.
+  await page.getByRole("link", { name: /^Climate & Environment/ }).click();
+  const follow = page.getByRole("button", { name: "Follow Climate & Environment" });
+  await follow.click();
+  await expect(page.getByRole("button", { name: "Unfollow Climate & Environment" })).toBeVisible();
+  const firstRow = page.locator("section[aria-labelledby='topics-h'] li:has(button)").filter({ hasText: "More like this" }).first();
+  if (await firstRow.count()) {
+    await firstRow.getByRole("button", { name: "More like this" }).click();
+    await expect(firstRow.getByRole("button", { name: "Noted" })).toBeVisible();
+  }
+  await page.goto("/settings");
+  await expect(page.getByRole("checkbox", { name: /^Climate & Environment/ })).toHaveAttribute("aria-checked", "true");
+
+  // Search stored reporting.
+  await page.goto("/search?q=AI");
+  await expect(page.getByRole("heading", { name: "Search" })).toBeVisible();
+  await expect(page.getByText(/results? for “AI”/)).toBeVisible();
+  await page.goto("/search?q=zzzzqqqq");
+  await expect(page.getByText("No stored stories match.")).toBeVisible();
 
   expect(consoleErrors.filter((e) => !/Failed to load resource/.test(e))).toEqual([]);
 });
@@ -146,15 +167,15 @@ test("mobile layout has no horizontal scroll @mobile", async ({ page }) => {
   await page.goto("/");
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(await overflow()).toBeLessThanOrEqual(1);
-  await page.getByRole("button", { name: "Menu" }).click();
-  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
 
   const origin = new URL(page.url()).origin;
   await page.request.put("/api/preferences", { data: { displayName: "Mobile", sections: ["pakistan", "education"], region: "PK", timezone: "Asia/Karachi" }, headers: { origin } });
   const gen = await page.request.post("/api/editions", { data: { mode: "ensure" }, headers: { origin } });
   const { editionId } = await gen.json();
-  for (const path of [`/newspaper/${editionId}`, "/onboarding", "/settings", "/archive", "/explore"]) {
+  for (const path of [`/newspaper/${editionId}`, "/onboarding", "/settings", "/archive", "/explore", "/search"]) {
     await page.goto(path);
     expect(await overflow(), path).toBeLessThanOrEqual(1);
   }
+  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(page.getByRole("link", { name: "Archive" })).toBeVisible();
 });

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -52,8 +52,11 @@ beforeAll(async () => {
     create role service_role nologin bypassrls;
     grant usage on schema auth to authenticated, anon;
   `);
-  const sql = readFileSync(path.resolve(import.meta.dirname, "../supabase/migrations/20261017000000_daybreak_init.sql"), "utf8");
-  await db.exec(sql);
+  // Apply every migration in version order, exactly as Supabase does.
+  const dir = path.resolve(import.meta.dirname, "../supabase/migrations");
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
+    await db.exec(readFileSync(path.join(dir, file), "utf8"));
+  }
   // Supabase grants table privileges to these roles by default; RLS then restricts rows.
   await db.exec(`
     grant usage on schema public to authenticated, anon, service_role;

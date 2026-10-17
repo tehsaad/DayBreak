@@ -11,7 +11,7 @@ export async function GET() {
   return json({ bookmarks: await reader.store.listBookmarks(reader.userId) });
 }
 
-const Add = z.object({ editionId: z.string().uuid(), articleId: z.string().min(1).max(64) });
+const Add = z.object({ editionId: z.string().uuid().optional(), articleId: z.string().min(1).max(64) });
 
 /** Save a story. Recorded as a "save" signal too, since saving is a deliberate positive act. */
 export async function POST(req: Request) {

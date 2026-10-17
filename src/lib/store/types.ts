@@ -17,6 +17,10 @@ export interface ArticleQuery {
   text?: string;
   topic?: TopicId;
   sourceIds?: string[];
+  /** Exact publisher name. */
+  publisher?: string;
+  /** Default newest first. */
+  sort?: "newest" | "oldest";
 }
 
 /** Delete learned signals: all, one topic (by primary topic) or one event (article + type). */

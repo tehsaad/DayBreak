@@ -7,7 +7,7 @@ Every key is optional for local development. A **production deploy** needs Supab
 | What | Variable name(s) | Get it from | Put it in |
 |---|---|---|---|
 | **Supabase** project URL | `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API | Vercel env (Production) · `.env.local` |
-| **Supabase** anon key (public) | `NEXT_PUBLIC_SUPABASE_ANON_KEY` (or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`) | Supabase → Project Settings → API | Vercel env (Production) · `.env.local` |
+| **Supabase** anon key (public) | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`) | Supabase → Project Settings → API | Vercel env (Production) · `.env.local` |
 | **Supabase** service-role key (**secret**) | `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`) | Supabase → Project Settings → API | Vercel env (Production, **Sensitive**) · `.env.local` |
 | **Gemini / Google AI Studio** | `GEMINI_API_KEY` (or `GOOGLE_GENERATIVE_AI_API_KEY` / `GOOGLE_AI_STUDIO_API_KEY`) | https://aistudio.google.com/apikey | Vercel env (Production, Sensitive) · `.env.local` |
 | **GNews** (extra news) | `GNEWS_API_KEY` | https://gnews.io (dashboard) | Vercel env (Production, Sensitive) · `.env.local` |
@@ -29,7 +29,7 @@ npx vercel@62.2.0 env add GEMINI_API_KEY production --sensitive --scope teh-saad
 npx vercel@62.2.0 env add GNEWS_API_KEY production --sensitive --scope teh-saad
 npx vercel@62.2.0 env add SUPABASE_SERVICE_ROLE_KEY production --sensitive --scope teh-saad
 npx vercel@62.2.0 env add NEXT_PUBLIC_SUPABASE_URL production --scope teh-saad
-npx vercel@62.2.0 env add NEXT_PUBLIC_SUPABASE_ANON_KEY production --scope teh-saad
+npx vercel@62.2.0 env add NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY production --scope teh-saad
 ```
 
 Check what's set (names only, never values):
@@ -54,7 +54,7 @@ Once all three exist, the next successful CI run on `main` triggers **Deploy pro
 
 ## After adding Supabase keys
 
-1. Apply the database schema: `supabase/migrations/20261017000000_daybreak_init.sql`, pasted into Supabase → SQL Editor (or `supabase db push`).
+1. Apply the database schema: the four files in `supabase/migrations/` (already applied to project `umjwrmnicqflmkoifejj`), pasted into Supabase → SQL Editor (or `supabase db push`).
 2. In Supabase → Authentication → URL Configuration:
    - **Site URL:** `https://daybreak-gilt.vercel.app`
    - **Redirect URLs:** `https://daybreak-gilt.vercel.app/auth/callback` and `http://localhost:3000/auth/callback`

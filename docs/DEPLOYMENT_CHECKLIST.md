@@ -6,7 +6,7 @@ Where each key goes: [`docs/API_KEYS.md`](API_KEYS.md).
 
 ## 1. Services
 
-- [ ] Supabase project created; migration `supabase/migrations/20261017000000_daybreak_init.sql` applied (`supabase db push`, or the SQL editor).
+- [ ] Supabase project created; migration the four files in `supabase/migrations/` (already applied to project `umjwrmnicqflmkoifejj`) applied (`supabase db push`, or the SQL editor).
 - [ ] Supabase Auth: Site URL `https://daybreak-gilt.vercel.app`; redirect URL `https://daybreak-gilt.vercel.app/auth/callback` (plus `http://localhost:3000/auth/callback`).
 - [ ] An LLM API key obtained (Anthropic by default, or OpenAI, Google or Vercel AI Gateway).
 
@@ -16,7 +16,7 @@ Where each key goes: [`docs/API_KEYS.md`](API_KEYS.md).
 - [x] Free production domain `https://daybreak-gilt.vercel.app`. Deployment Protection is set to Standard: production is public, previews need a Vercel login.
 - [ ] Production environment variables set. Names must match exactly:
   - [ ] `NEXT_PUBLIC_SUPABASE_URL`
-  - [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` (or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`)
+  - [ ] `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
   - [ ] `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`): **server-only**, marked Sensitive, **never** `NEXT_PUBLIC_…`
   - [x] `CRON_SECRET` (already set in Vercel Production)
   - [ ] An AI key: `GEMINI_API_KEY` (Gemini / Google AI Studio; also accepted as `GOOGLE_GENERATIVE_AI_API_KEY` or `GOOGLE_AI_STUDIO_API_KEY`), or `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, with `LLM_PROVIDER` / `LLM_MODEL` as needed
@@ -40,9 +40,9 @@ Where each key goes: [`docs/API_KEYS.md`](API_KEYS.md).
 
 - [ ] Push `main` (or merge a PR). The **CI** workflow passes.
 - [ ] **Deploy production** runs automatically. In order, it verifies CI, the environment variable names, the build, the candidate deploy, the health smoke test and the promotion.
-- [ ] Sign in with a magic link, complete onboarding and generate a paper. Check that the edition, feedback, bookmarks and PDF work.
+- [ ] Sign up (email or Google), confirm, complete onboarding and generate a paper. Check that the edition, feedback, bookmarks and PDF work.
 - [ ] In Supabase, rows exist in `editions`, `edition_stories`, `feedback_events` and `saved_articles`.
-- [ ] A second account opening the first user's `/paper/<id>` gets "not found".
+- [ ] A second account opening the first user's `/newspaper/<id>` gets "not found".
 - [ ] Vercel → Settings → Cron Jobs lists `/api/cron/ingest` and `/api/cron/prepare`.
 - [ ] `curl -H "Authorization: Bearer $CRON_SECRET" https://daybreak-gilt.vercel.app/api/cron/ingest` returns 200; the same request without the header returns 401.
 

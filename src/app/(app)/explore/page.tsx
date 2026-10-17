@@ -1,55 +1,53 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowUpRight, Search } from "lucide-react";
-import { formatEditionDate, formatTime } from "@/components/paper/format";
+import { Search } from "lucide-react";
+import { ArticleRow, FollowTopicButton } from "@/components/article-row";
+import { formatEditionDate } from "@/components/paper/format";
 import { findEarlierCoverage } from "@/lib/edition/evidence";
 import { planEdition, clusterArticles } from "@/lib/rank/plan";
 import { emptyLearnedProfile } from "@/lib/rank/learning";
 import { freshness } from "@/lib/rank/score";
 import { safeLinkUrl } from "@/lib/security/url";
 import { requireReader } from "@/lib/server/page-reader";
-import { getServiceStore } from "@/lib/store";
 import { TOPICS, TOPIC_IDS, isTopicId, topicLabel } from "@/lib/topics";
 import type { Article, Edition } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Explore" };
 export const dynamic = "force-dynamic";
 
-function ArticleLine({ a, tz }: { a: Article; tz: string }) {
-  const href = safeLinkUrl(a.url);
-  return (
-    <li className="border-t border-rule py-3">
-      <p className="kicker">{topicLabel(a.topics[0] ?? "world")}</p>
-      {href ? (
-        <a href={href} target="_blank" rel="noopener noreferrer" className="headline mt-1 inline-flex items-start gap-1 text-lg hover:text-accent">
-          {a.title} <ArrowUpRight size={14} className="mt-1.5 shrink-0" aria-hidden />
-        </a>
-      ) : (
-        <p className="headline mt-1 text-lg">{a.title}</p>
-      )}
-      <p className="meta mt-1">{a.publisher} · {formatTime(a.publishedAt, tz)}{a.sample ? " · Sample" : ""}</p>
-      {a.description ? <p className="mt-1 line-clamp-2 text-sm text-ink-soft">{a.description}</p> : null}
-    </li>
-  );
-}
-
 export default async function ExplorePage({ searchParams }: PageProps<"/explore">) {
   const { reader, prefs } = await requireReader("/explore");
   const sp = await searchParams;
-  const q = typeof sp.q === "string" ? sp.q.slice(0, 120).trim() : "";
   const topicParam = typeof sp.topic === "string" && isTopicId(sp.topic) ? sp.topic : undefined;
+  const sort = sp.sort === "covered" ? "covered" : "newest";
   const tz = prefs.timezone;
-  const news = getServiceStore();
 
-  const [results, pool, editions] = await Promise.all([
-    q || topicParam ? news.listArticles({ text: q || undefined, topic: topicParam, sinceHours: 24 * 14, limit: 40 }) : Promise.resolve([] as Article[]),
-    news.listArticles({ sinceHours: 36, limit: 1200 }),
+  const [pool, editions, bookmarks] = await Promise.all([
+    reader.store.listArticles({ sinceHours: 36, limit: 1200 }),
     reader.store.listEditions(reader.userId, 8),
+    reader.store.listBookmarks(reader.userId),
   ]);
+  const savedIds = new Set(bookmarks.map((b) => b.articleId));
   const livePool = pool.filter((a) => !a.sample);
+  const clusterMap = clusterArticles(livePool);
+
+  // Browse by topic: every topic (not only followed ones), newest or most widely covered first.
+  const topicCounts = new Map<string, number>();
+  for (const a of livePool) if (a.topics[0]) topicCounts.set(a.topics[0], (topicCounts.get(a.topics[0]) ?? 0) + 1);
+  const browse = topicParam
+    ? livePool
+        .filter((a) => a.topics.includes(topicParam) && !prefs.mutedTopics.includes(a.topics[0]!))
+        .sort((a, b) =>
+          sort === "covered"
+            ? (clusterMap.get(b.id)?.publishers.size ?? 1) - (clusterMap.get(a.id)?.publishers.size ?? 1) || Date.parse(b.publishedAt ?? b.collectedAt) - Date.parse(a.publishedAt ?? a.collectedAt)
+            : Date.parse(b.publishedAt ?? b.collectedAt) - Date.parse(a.publishedAt ?? a.collectedAt),
+        )
+        .filter((a, i, arr) => arr.findIndex((x) => clusterMap.get(x.id) === clusterMap.get(a.id)) === i)
+        .slice(0, 12)
+    : [];
 
   // One story, many newsrooms: clusters reported by 3+ publishers.
-  const clusters = [...new Set(clusterArticles(livePool).values())]
+  const clusters = [...new Set(clusterMap.values())]
     .filter((c) => c.publishers.size >= 3)
     .sort((a, b) => b.publishers.size - a.publishers.size)
     .slice(0, 4)
@@ -75,35 +73,44 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="font-display text-5xl font-extrabold tracking-tight">Explore</h1>
-      <p className="mt-2 max-w-2xl text-ink-soft">Look beyond today&apos;s edition: search two weeks of reporting, compare how different newsrooms cover the same story, and follow threads across your archive.</p>
+      <p className="mt-2 max-w-2xl text-ink-soft">Look beyond today&apos;s edition: browse every topic, follow new ones, compare how different newsrooms cover the same story, and follow threads across your archive.</p>
+      <p className="mt-2 font-sans text-sm"><Link href="/search" className="inline-flex items-center gap-1 text-accent underline"><Search size={14} aria-hidden /> Search stored reporting</Link></p>
 
-      <form action="/explore" className="mt-6 flex flex-col gap-2 sm:flex-row" role="search">
-        <label className="relative flex-1">
-          <span className="sr-only">Search recent reporting</span>
-          <Search size={16} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input name="q" defaultValue={q} className="input !pl-9" placeholder="Search headlines and excerpts, e.g. scholarships, IMF, glaciers" />
-        </label>
-        <select name="topic" defaultValue={topicParam ?? ""} className="input sm:w-56" aria-label="Section">
-          <option value="">All sections</option>
-          {TOPIC_IDS.map((t) => (
-            <option key={t} value={t}>{TOPICS[t].label}</option>
-          ))}
-        </select>
-        <button className="btn btn-primary" type="submit">Search</button>
-      </form>
-
-      {q || topicParam ? (
-        <section aria-labelledby="results-h" className="mt-8">
-          <h2 id="results-h" className="font-sans text-xs font-semibold uppercase tracking-[0.2em] text-muted">
-            {results.length} result{results.length === 1 ? "" : "s"}{q ? ` for “${q}”` : ""}{topicParam ? ` in ${TOPICS[topicParam].label}` : ""}
-          </h2>
-          {results.length ? (
-            <ul className="mt-2 grid gap-x-8 md:grid-cols-2">{results.map((a) => <ArticleLine key={a.id} a={a} tz={tz} />)}</ul>
-          ) : (
-            <p className="mt-3 italic text-muted">Nothing found in the last two weeks of collected reporting. Try a broader word.</p>
-          )}
-        </section>
-      ) : null}
+      <section aria-labelledby="topics-h" className="mt-10">
+        <div className="border-b-2 border-ink pb-1.5">
+          <h2 id="topics-h" className="font-display text-3xl font-extrabold">Browse by topic</h2>
+        </div>
+        <p className="mt-2 text-sm text-ink-soft">Every topic DAYBREAK covers — including ones you don&apos;t follow yet. Following a topic adds it as a section of your paper; you can unfollow at any time.</p>
+        <ul className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+          {TOPIC_IDS.map((t) => {
+            const muted = prefs.mutedTopics.includes(t);
+            return (
+              <li key={t} className="flex items-center justify-between gap-3 border-b border-rule py-2">
+                <Link href={`/explore?topic=${t}${sort === "covered" ? "&sort=covered" : ""}#topics-h`} aria-current={topicParam === t ? "page" : undefined} className={`font-sans text-sm ${topicParam === t ? "font-semibold text-accent" : "text-ink hover:text-accent"}`}>
+                  {TOPICS[t].label} <span className="text-muted">· {topicCounts.get(t) ?? 0}</span>
+                </Link>
+                {muted ? <span className="font-sans text-xs text-muted">Muted</span> : <FollowTopicButton topic={t} label={TOPICS[t].label} following={prefs.sections.includes(t)} />}
+              </li>
+            );
+          })}
+        </ul>
+        {topicParam ? (
+          <div className="mt-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="font-display text-2xl font-bold">{TOPICS[topicParam].label}</h3>
+              <nav aria-label="Sort" className="flex gap-2 font-sans text-xs">
+                <Link href={`/explore?topic=${topicParam}#topics-h`} className="chip !py-1" aria-current={sort === "newest" ? "true" : undefined}>Newest</Link>
+                <Link href={`/explore?topic=${topicParam}&sort=covered#topics-h`} className="chip !py-1" aria-current={sort === "covered" ? "true" : undefined}>Most covered</Link>
+              </nav>
+            </div>
+            {browse.length ? (
+              <ul className="mt-2 grid gap-x-8 md:grid-cols-2">{browse.map((a) => <ArticleRow key={a.id} article={a} timeZone={tz} saved={savedIds.has(a.id)} />)}</ul>
+            ) : (
+              <p className="mt-3 italic text-muted">No stories in this topic in the last 36 hours.</p>
+            )}
+          </div>
+        ) : null}
+      </section>
 
       <section aria-labelledby="compare-h" className="mt-12">
         <div className="border-b-2 border-ink pb-1.5">
@@ -165,7 +172,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
           <h2 id="bubble-h" className="font-display text-3xl font-extrabold">Outside your bubble</h2>
         </div>
         <p className="mt-2 text-sm text-ink-soft">Widely covered stories from sections you don&apos;t follow. Like one? Save it — DAYBREAK will notice.</p>
-        {bubble.length ? <ul className="mt-2 grid gap-x-8 md:grid-cols-2 lg:grid-cols-3">{bubble.map((a) => <ArticleLine key={a.id} a={a} tz={tz} />)}</ul> : <p className="mt-4 italic text-muted">You already follow every section with recent stories.</p>}
+        {bubble.length ? <ul className="mt-2 grid gap-x-8 md:grid-cols-2 lg:grid-cols-3">{bubble.map((a) => <ArticleRow key={a.id} article={a} timeZone={tz} saved={savedIds.has(a.id)} />)}</ul> : <p className="mt-4 italic text-muted">You already follow every section with recent stories.</p>}
       </section>
     </div>
   );

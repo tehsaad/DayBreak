@@ -215,3 +215,13 @@ export function summarizeRun(run: IngestionRun) {
     inserted: run.inserted,
   };
 }
+
+/**
+ * Run a bounded ingestion unless one finished within FEED_FRESH_MINUTES. Used for background
+ * refreshes (e.g. after serving the public homepage) so visitors never wait on feeds.
+ */
+export async function refreshIfStale(store: Store, log?: (msg: string, data?: Record<string, unknown>) => void): Promise<IngestionRun | null> {
+  const last = await store.lastIngestionRun().catch(() => null);
+  if (last && Date.now() - Date.parse(last.finishedAt) < LIMITS.feedFreshMinutes * 60_000) return null;
+  return ingest({ store, trigger: "on_demand", budgetMs: 20_000, log });
+}

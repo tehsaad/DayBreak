@@ -95,7 +95,12 @@ export function snapshot(a: Article): ArticleSnapshot {
 async function loadCandidates(opts: GenerateOptions, now: Date, log: NonNullable<GenerateOptions["log"]>) {
   if (opts.articles) return { articles: opts.articles, contentMode: opts.articles.every((a) => a.sample) ? ("sample" as const) : ("live" as const), ingestion: null };
 
-  if (newsMode() === "sample") return { articles: sampleArticles(now), contentMode: "sample" as const, ingestion: null };
+  if (newsMode() === "sample") {
+    const articles = sampleArticles(now);
+    // Make the labelled sample set searchable in demo storage only — never in the shared database.
+    if (opts.store.kind === "file") await opts.store.upsertArticles(articles).catch(() => undefined);
+    return { articles, contentMode: "sample" as const, ingestion: null };
+  }
 
   let ingestion: GenerateResult["ingestion"] = null;
   const last = await opts.store.lastIngestionRun();

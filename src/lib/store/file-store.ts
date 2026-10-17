@@ -120,8 +120,17 @@ export class FileStore implements Store {
       let list = Object.values(data.articles).filter((a) => Date.parse(a.publishedAt ?? a.collectedAt) >= since);
       if (query.topic) list = list.filter((a) => a.topics.includes(query.topic!));
       if (query.sourceIds) list = list.filter((a) => query.sourceIds!.includes(a.sourceId));
-      if (text) list = list.filter((a) => `${a.title} ${a.description} ${a.publisher}`.toLowerCase().includes(text));
-      list.sort((a, b) => Date.parse(b.publishedAt ?? b.collectedAt) - Date.parse(a.publishedAt ?? a.collectedAt));
+      if (query.publisher) list = list.filter((a) => a.publisher === query.publisher);
+      if (text) {
+        // Every word must appear in the headline, summary or publisher (case-insensitive).
+        const words = text.split(/\s+/).filter(Boolean);
+        list = list.filter((a) => {
+          const hay = `${a.title} ${a.description} ${a.publisher}`.toLowerCase();
+          return words.every((w) => hay.includes(w));
+        });
+      }
+      const dir = query.sort === "oldest" ? -1 : 1;
+      list.sort((a, b) => dir * (Date.parse(b.publishedAt ?? b.collectedAt) - Date.parse(a.publishedAt ?? a.collectedAt)));
       return list.slice(0, query.limit ?? 500);
     });
   }

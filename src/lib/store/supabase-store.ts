@@ -225,8 +225,9 @@ export class SupabaseStore implements Store {
     }
     if (query.topic) q = q.contains("topics", [query.topic]);
     if (query.sourceIds) q = q.in("source_id", query.sourceIds);
+    if (query.publisher) q = q.eq("publisher", query.publisher);
     if (query.text) q = q.textSearch("search", query.text, { type: "websearch", config: "english" });
-    const data = check(await q.order("published_at", { ascending: false, nullsFirst: false }).limit(query.limit ?? 500), "article list") as Row[];
+    const data = check(await q.order("published_at", { ascending: query.sort === "oldest", nullsFirst: false }).limit(query.limit ?? 500), "article list") as Row[];
     return data.map(rowToArticle);
   }
 
