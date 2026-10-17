@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "DAYBREAK \u2014 a personal morning paper. The world, filtered through you.",
+  "description": "DAYBREAK — a personal morning paper. The world, filtered through you.",
   "engines": {
     "node": ">=20.9"
   },
