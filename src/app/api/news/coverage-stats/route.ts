@@ -1,4 +1,5 @@
-import { json } from "@/lib/api";
+import { apiError, json } from "@/lib/api";
+import { authorizeCron } from "@/lib/cron/auth";
 import { findCoverage } from "@/lib/coverage/group";
 import { publicMemo } from "@/lib/public-cache";
 import { getServiceStore } from "@/lib/store";
@@ -9,9 +10,12 @@ export const maxDuration = 30;
 /**
  * Public, aggregate view of Full Coverage on the live pool (shared news only, no reader data):
  * how many distinct publishers each recent story is matched with, and the largest groups, so
- * matching quality can be checked against real data. Cached for 10 minutes.
+ * matching quality can be checked against real data. Expensive on a miss (seconds), so it needs
+ * the cron secret like other operational endpoints. Cached for 10 minutes per instance.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = authorizeCron(req);
+  if (!auth.ok) return apiError(auth.status, auth.error);
   const stats = await publicMemo("coverage-stats", 10 * 60_000, async () => {
     const started = Date.now();
     const pool = (await getServiceStore().listArticles({ sinceHours: 96, limit: 1500 })).filter((a) => !a.sample);
@@ -33,5 +37,5 @@ export async function GET() {
       .slice(0, 8);
     return { poolSize: pool.length, publishers: new Set(pool.map((a) => a.publisher)).size, sampled: sample.length, histogram, largest, computeMs: Date.now() - started };
   });
-  return json(stats, { headers: { "cache-control": "public, s-maxage=600, stale-while-revalidate=1200" } });
+  return json(stats);
 }

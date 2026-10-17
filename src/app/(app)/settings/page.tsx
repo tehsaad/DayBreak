@@ -94,9 +94,10 @@ export default async function SettingsPage() {
                   <tr key={s.id}>
                     <td className="py-1.5 pr-3"><a className="hover:underline" href={s.homepage} target="_blank" rel="noopener noreferrer">{s.name}</a></td>
                     <td className="py-1.5 pr-3 text-muted">{s.region === "GLOBAL" ? "International" : regionName(s.region)}</td>
-                    <td className="py-1.5 pr-3 text-muted">{h?.lastSuccessAt ? formatTime(h.lastSuccessAt, prefs.timezone) : "—"}</td>
+                    <td className="py-1.5 pr-3 text-muted">{h?.lastSuccessAt ? formatTime(h.lastSuccessAt, prefs.timezone) : h?.lastFetchedAt ? "never succeeded" : "—"}</td>
                     <td className={`py-1.5 ${STATUS_STYLE[h?.lastStatus ?? ""] ?? "text-muted"}`} title={h?.lastError ?? undefined}>
                       {off ? "off · needs GNEWS_API_KEY" : h?.lastStatus ? `${h.lastStatus.replace("_", " ")}${h.lastStatus === "ok" ? ` · ${h.lastItemCount} items` : ""}` : "not fetched yet"}
+                      {h?.lastError && h.lastStatus !== "ok" && h.lastStatus !== "not_modified" ? <span className="mt-0.5 block max-w-md font-sans text-[0.7rem] leading-snug text-muted">{h.lastError}</span> : null}
                     </td>
                   </tr>
                 );

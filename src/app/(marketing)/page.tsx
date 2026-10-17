@@ -9,7 +9,7 @@ import { Thumb } from "@/components/thumb";
 import { log } from "@/lib/api";
 import { getReader } from "@/lib/auth/reader";
 import { llmConfig, newsMode, storageMode } from "@/lib/env";
-import { refreshIfStale } from "@/lib/news/ingest";
+import { refreshIfStale, summarizeRun } from "@/lib/news/ingest";
 import { sampleArticles } from "@/lib/news/sample";
 import { SOURCES } from "@/lib/news/sources";
 import { DEFAULT_PREFERENCES, editionDateFor } from "@/lib/preferences";
@@ -72,7 +72,11 @@ function StoryCard({ a, delay, big = false }: { a: Article; delay: number; big?:
 async function FrontPage() {
   const data = await landingData();
   if (newsMode() === "live") {
-    after(() => refreshIfStale(getServiceStore()).catch((e) => log("landing_ingest_failed", { error: (e as Error).message?.slice(0, 120) })));
+    after(() =>
+      refreshIfStale(getServiceStore(), log)
+        .then((run) => (run ? log("background_ingest", summarizeRun(run)) : undefined))
+        .catch((e) => log("landing_ingest_failed", { error: (e as Error).message?.slice(0, 120) })),
+    );
   }
   const [lead, ...rest] = data.stories;
   if (!lead) return null;
