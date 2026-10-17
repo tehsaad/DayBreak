@@ -17,7 +17,7 @@
 | 2:45–3:35 | Learning | Click **Not interested** on a story ("Noted, future editions will carry fewer stories like this", with Undo). **Save** a story from another section. Click **Regenerate**. Edition 2: the rejected story is gone and the ranking has shifted. Open **Settings → What DAYBREAK has learned** to show the weights going negative and positive, with the per-topic reset. Mention decay and caps: "one accidental tap can't wipe out a section". Optionally show `npm run demo:learning` in a terminal. |
 | 3:35–4:10 | PDF | Click **PDF** and open it: the same edition id, masthead, lead with image, front-page sidebar, sections and clickable links, "Page X of Y". "It's rendered from the saved edition, with no new search and no new AI call, so it matches the website exactly." |
 | 4:10–4:35 | Archive | Open **Archive**: both editions are listed. Open edition 1: "previous editions are preserved exactly as published." Briefly show **Explore → One story, many newsrooms**. |
-| 4:35–5:00 | Architecture | Show the README Mermaid diagram: Next.js on Vercel Functions, Supabase Postgres with RLS and Auth, a provider-agnostic AI layer with grounding checks and fallbacks, and Vercel Cron with a secret. Close with the measured results in `docs/EVALUATION.md` and the tests (82 unit/integration and 3 end-to-end). |
+| 4:35–5:00 | Architecture | Show the README Mermaid diagram: Next.js on Vercel Functions, Supabase Postgres with RLS and Auth, a provider-agnostic AI layer with grounding checks and fallbacks, and Vercel Cron with a secret. Close with the measured results in `docs/EVALUATION.md` and the tests (89 unit/integration and 3 end-to-end, run by GitHub Actions on every push and pull request). |
 
 **Fallbacks if something goes wrong live**
 

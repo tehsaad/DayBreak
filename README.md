@@ -1,5 +1,7 @@
 # DAYBREAK
 
+[![CI](https://github.com/tehsaad/DayBreak/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tehsaad/DayBreak/actions/workflows/ci.yml)
+
 **The world, filtered through you.** A personal morning paper for the NaSCon'26 AI Hackathon.
 
 DAYBREAK gathers real reporting from 43 RSS feeds (21 publishers, including Dawn, The Express Tribune, Geo, Business Recorder, BBC, The Guardian, NPR, Nature and MIT Technology Review). It ranks the stories around one reader's interests, explains why the important ones matter, learns from that reader's feedback and prints the result as a web newspaper and a matching PDF. Every story links to its original publisher. DAYBREAK stores only headlines and short excerpts.
@@ -21,7 +23,7 @@ DAYBREAK gathers real reporting from 43 RSS feeds (21 publishers, including Dawn
 2. [Architecture](#architecture)
 3. [Configuration](#configuration)
 4. [Database setup (Supabase)](#database-setup-supabase)
-5. [Deploying to Vercel](#deploying-to-vercel)
+5. [CI/CD and deploying to Vercel](#cicd-and-deploying-to-vercel)
 6. [How it works](#how-it-works)
 7. [Security and privacy](#security-and-privacy)
 8. [Costs and limits](#costs-and-limits)
@@ -59,7 +61,7 @@ Useful scripts:
 | Command | What it does |
 |---|---|
 | `npm run dev` / `npm run build` / `npm start` | Next.js development, production build, production server |
-| `npm test` | Vitest unit and integration tests (82 tests) |
+| `npm test` | Vitest unit and integration tests (89 tests) |
 | `npm run test:e2e` | Playwright end-to-end reader journey (uses the system Google Chrome; set `PW_CHANNEL=chromium` after `npx playwright install chromium` otherwise) |
 | `npm run lint` / `npm run typecheck` | ESLint, TypeScript |
 | `npm run ingest [-- --force]` | Fetch every feed into the configured store |
@@ -126,9 +128,9 @@ Copy [`.env.example`](.env.example) to `.env.local` locally, or set these variab
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | for accounts | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | for accounts | Supabase anon/publishable key (RLS-restricted) |
-| `SUPABASE_SERVICE_ROLE_KEY` | for accounts | Server-only. Used for shared news data and cron. Never exposed to the client |
+| `NEXT_PUBLIC_SUPABASE_URL` | for accounts | Supabase project URL. Public by design |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | for accounts | Supabase anon key, restricted by RLS and public by design. `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is accepted instead |
+| `SUPABASE_SERVICE_ROLE_KEY` | for accounts | **Server-only.** Used for shared news data and cron. `SUPABASE_SECRET_KEY` is accepted instead. Never give it a `NEXT_PUBLIC_` prefix: those values are inlined into browser bundles, and the deploy gate refuses any `NEXT_PUBLIC_…SERVICE_ROLE/SECRET/API_KEY/TOKEN` variable |
 | `LLM_PROVIDER` | optional | `anthropic`, `openai`, `google`, `gateway` or `none`. Unset: the first provider whose key is present |
 | `LLM_MODEL` | optional | Model id. Defaults: `claude-haiku-5-5` (Anthropic), `anthropic/claude-haiku-5.5` (AI Gateway). Set it explicitly for OpenAI or Google |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `AI_GATEWAY_API_KEY` | optional | Provider key. On Vercel the AI Gateway can also authenticate through OIDC |
@@ -139,7 +141,7 @@ Copy [`.env.example`](.env.example) to `.env.local` locally, or set these variab
 | `DATA_DIR` | optional | Demo-mode store location (default `.data`, or `/tmp/daybreak` on Vercel) |
 | `FEED_FRESH_MINUTES`, `POOL_STALE_MINUTES`, `REGENERATE_COOLDOWN_SECONDS`, `CANDIDATE_HOURS`, `CRON_EDITIONS_PER_RUN` | optional | Tunables. Defaults 30, 90, 45, 48, 20 |
 
-When Supabase variables are absent, the app runs in demo mode; when LLM variables are absent, it runs without AI. Both states are shown in the UI and at `GET /api/health`, which reports which features are configured but never prints a secret.
+All three Supabase variables must be set for accounts to work (`src/lib/env.ts`, `supabaseConfig()`). When Supabase variables are absent, the app runs in demo mode; when LLM variables are absent, it runs without AI. Both states are shown in the UI and at `GET /api/health`, which reports which features are configured but never prints a secret.
 
 ---
 
@@ -147,7 +149,12 @@ When Supabase variables are absent, the app runs in demo mode; when LLM variable
 
 1. Create a Supabase project.
 2. Apply the migration in [`supabase/migrations/20261017000000_daybreak_init.sql`](supabase/migrations/20261017000000_daybreak_init.sql), either with the Supabase CLI (`supabase link --project-ref <ref>` then `supabase db push`) or by pasting it into the SQL editor.
-3. In **Authentication → URL configuration**, set the Site URL to your deployment URL and add `https://<your-domain>/auth/callback` (and `http://localhost:3000/auth/callback` for local use) to the redirect URLs. Email magic links are enabled by default.
+3. In **Authentication → URL configuration**, set the Site URL to your production URL. Add these redirect URLs:
+   - `https://<your-domain>/auth/callback`
+   - `http://localhost:3000/auth/callback`, for local use
+   - `https://*-<your-team>.vercel.app/auth/callback`, if Preview deployments use this project
+
+   Email magic links are enabled by default.
 4. Copy the project URL, anon key and service-role key into the environment.
 5. Run `npm run ingest` once, or let the first reader's request fetch the feeds.
 
@@ -170,21 +177,88 @@ Editions are created through the `create_edition(edition, stories)` SQL function
 
 ---
 
-## Deploying to Vercel
+## CI/CD and deploying to Vercel
+
+### Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to `main`, every pull request targeting `main`, and on manual dispatch. It runs two parallel jobs:
+
+| Job (check name) | Steps |
+|---|---|
+| **Typecheck, lint & unit tests** | `npm ci` → `npm run typecheck` → `npm run lint` → `npm test` (JUnit report uploaded as `vitest-report`) |
+| **Build & end-to-end** | `npm ci` → install Playwright Chromium (cached) → `npm run build` → `npm run test:e2e` (HTML report uploaded as `playwright-report`; traces as `playwright-traces` on failure) |
+
+- **Credentials:** CI uses none. No Supabase, LLM, cron or Vercel credentials are set, so the app runs in demo storage mode without AI.
+  - The unit tests mock the LLM and run the real Supabase migration on in-memory Postgres (PGlite) to check RLS.
+  - The end-to-end journey uses the labelled offline sample news (`NEWS_MODE=sample`), so a publisher outage cannot fail CI.
+  - The only network access is to npm, the Playwright browser download, and Google Fonts during `next build`.
+- **Reproducible installs:** `npm ci` installs exactly what `package-lock.json` specifies.
+- **Caching:** npm via `actions/setup-node`, and the Playwright browser keyed by its version.
+- **Concurrency:** a newer push cancels a pull request's previous run. Runs on `main` always complete, because production deploys depend on them.
+- **Least privilege:** `permissions: contents: read`, and `persist-credentials: false` on checkout.
+- **Pinned actions:** third-party actions are pinned to full commit SHAs; Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml)) proposes updates weekly.
+- **Failure behaviour:** every step runs a real project command, so any failing command fails the job.
+
+`npm run eval` is **not** part of CI, because its numbers depend on that day's live news. [`.github/workflows/evaluation.yml`](.github/workflows/evaluation.yml) runs it on demand and every Monday. It fetches the public feeds, needs no credentials, posts `docs/EVALUATION.md` to the job summary and uploads it as an artifact.
+
+### Continuous deployment
+
+| What | How |
+|---|---|
+| **Preview deployments** for pull requests | Vercel's GitHub integration builds every non-`main` branch and comments the preview URL on the PR. |
+| **Production** from `main` | Automatic production deploys are switched off in [`vercel.json`](vercel.json) (`"git": { "deploymentEnabled": { "main": false } }`). [`.github/workflows/deploy-production.yml`](.github/workflows/deploy-production.yml) deploys instead, **only after CI succeeds** for that push to `main`. |
+
+The deploy workflow runs these steps in order:
+
+1. Re-check, through the Checks API, that both required CI checks passed for the exact commit. This also applies to a manual dispatch.
+2. Verify the Vercel Production environment defines every required variable, and that no secret is exposed as `NEXT_PUBLIC_*`. This uses `vercel env ls` and [`scripts/ci/check-vercel-env.mjs`](scripts/ci/check-vercel-env.mjs), and only ever reads variable *names*.
+3. `vercel pull` → `vercel build --prod` → `vercel deploy --prebuilt --prod --skip-domain`. This creates a production **candidate** without moving the domain.
+4. Smoke-test the candidate's `/api/health` with [`scripts/ci/check-health.mjs`](scripts/ci/check-health.mjs). It must report `storage: supabase`, `news: live`, a configured AI provider and `CRON_SECRET`.
+5. `vercel promote` the candidate. Optionally, the public domain's health is then re-checked.
+
+If the Vercel secrets are not configured, the workflow stops at the first step with a notice and deploys nothing. If any later step fails, the production domain keeps serving the previous deployment.
+
+### One-time setup
+
+**Vercel**
+1. Import `tehsaad/DayBreak` in the Vercel dashboard. The framework (Next.js) is detected automatically. Because of `vercel.json`, the import does not create a production deployment; the workflow does.
+2. **Settings → Environment Variables.** Add the following for **Production**, and for **Preview** too if previews should use real services. Without them, previews run in labelled demo mode.
+
+   | Variable | Value |
+   |---|---|
+   | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Service-role key. Mark it **Sensitive**, and never use a `NEXT_PUBLIC_` name |
+   | `CRON_SECRET` | Long random string, e.g. `openssl rand -hex 32` |
+   | `ANTHROPIC_API_KEY` | Or `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `AI_GATEWAY_API_KEY`, optionally with `LLM_PROVIDER` and `LLM_MODEL` |
+
+3. **Settings → General:** note the Project ID. **Team Settings:** note the Team (Org) ID. **Account Settings → Tokens:** create a token scoped to the team.
+4. *(Optional)* If Deployment Protection covers production deployment URLs, create a **Protection Bypass for Automation** secret for the smoke test. Otherwise the workflow uses `vercel curl`, which authenticates with the token.
+
+**GitHub** (repository → Settings)
+
+1. **Secrets and variables → Actions → Secrets:**
+   - `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
+   - optionally `VERCEL_AUTOMATION_BYPASS_SECRET`
+
+   Application secrets live in Vercel, not GitHub.
+2. **Secrets and variables → Actions → Variables:** *(optional)* `PRODUCTION_URL`, e.g. `https://daybreak.vercel.app`, to verify the public domain after promotion.
+3. **Environments → New environment `production`:** restrict deployment branches to `main`. Optionally add required reviewers for a manual approval before each production deploy.
+4. **Branches → Add branch ruleset for `main`:**
+   - require a pull request before merging
+   - require status checks **Typecheck, lint & unit tests** and **Build & end-to-end**, with branches up to date before merging
+   - block force pushes and deletions
+
+### Manual deployment (fallback)
 
 ```bash
-npm i -g vercel           # if needed
-vercel link               # choose or create the project
-vercel env add NEXT_PUBLIC_SUPABASE_URL
-vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
-vercel env add SUPABASE_SERVICE_ROLE_KEY
-vercel env add CRON_SECRET
-vercel env add ANTHROPIC_API_KEY      # or another provider / AI Gateway
-vercel deploy                         # preview
-vercel deploy --prod                  # production
+npx vercel@62.2.0 link
+npx vercel@62.2.0 env ls production | node scripts/ci/check-vercel-env.mjs   # names only
+npx vercel@62.2.0 deploy            # preview
+npx vercel@62.2.0 deploy --prod     # production (bypasses the CI gate, so use sparingly)
 ```
 
-Or import the GitHub repository in the Vercel dashboard. The framework (Next.js), the build command (`next build`) and the Node.js runtime are detected automatically. Follow [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md).
+See [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) for the full checklist.
 
 **Cron:** [`vercel.json`](vercel.json) schedules `/api/cron/ingest` at 23:00 UTC and `/api/cron/prepare` at 23:30 UTC (04:00 and 04:30 in Pakistan).
 
@@ -340,9 +414,10 @@ These checks were run for this submission:
 
 | Check | Command | Result |
 |---|---|---|
-| Unit and integration tests | `npm test` | **82 passed** (10 files) |
+| Unit and integration tests | `npm test` | **89 passed** (11 files) |
 | Migration, RLS and immutability on real Postgres (PGlite) | part of `npm test` (`tests/rls.test.ts`) | passed |
-| End-to-end reader journey (Chrome) | `npm run test:e2e` | **3 passed** |
+| End-to-end reader journey | `npm run test:e2e` | **3 passed**, with both system Chrome and bundled Chromium plus `NEWS_MODE=sample` (the CI configuration) |
+| Workflow syntax | `actionlint` 1.7.12 with shellcheck 0.11.0 | no findings |
 | Types | `npm run typecheck` | clean |
 | Lint | `npm run lint` | clean |
 | Production build | `npm run build` | succeeds (26 routes) |
@@ -362,6 +437,7 @@ These checks were run for this submission:
 | `edition.test.ts` | Idempotent ensure, concurrent requests, regeneration cooldown and revisions, immutability, privacy between readers, feedback loop, de-duplicated events, Bigger Picture on demand |
 | `ai.test.ts` | Mock-LLM editorial, invented ids and numbers rejected, per-item fallback, provider failure, malformed output, injection sanitising, provider selection, missing keys |
 | `api.test.ts` | Validation, CSRF, 401/404/409/429 responses, feedback ownership, undo, bookmarks, PDF headers, links and ETag, cron auth (503/401/200), health without secrets |
+| `ci-scripts.test.ts` | Deploy gate: missing Supabase, cron or LLM variables, secrets exposed as `NEXT_PUBLIC_`, alias names, health smoke-test outcomes |
 | `rls.test.ts` | The real migration under `authenticated` and `anon` roles: isolation, cross-user writes blocked, immutability triggers, `create_edition` idempotency, feedback de-duplication, shared-table permissions |
 | `e2e/reader-journey.spec.ts` | Onboarding (including back-navigation), first live edition, Bigger Picture, save, not interested, search, regenerate (the rejected lead disappears), PDF, archive, saved, settings, explore, no console errors, cross-reader isolation, mobile layout |
 
@@ -390,7 +466,8 @@ src/
     auth/, cron/, server/   reader session, cron auth/preparation, page helpers
   proxy.ts                  Supabase session refresh (Next.js 16 proxy)
 supabase/migrations/        schema, RLS, triggers, create_edition()
-tests/  e2e/  scripts/      Vitest, Playwright, ingest/eval/demo scripts
+tests/  e2e/  scripts/      Vitest, Playwright, ingest/eval/demo scripts; scripts/ci = deploy gates
+.github/                    CI, production deploy and evaluation workflows; Dependabot
 assets/fonts/               OFL fonts embedded in the PDF
 docs/                       evaluation, demo script, deployment checklist, sample-data note
 ```
@@ -399,7 +476,7 @@ docs/                       evaluation, demo script, deployment checklist, sampl
 
 ## Known limitations
 
-- **Not deployed yet.** The Vercel deployment and a hosted Supabase project have not been created; see the deployment checklist.
+- **Not deployed yet.** The Vercel project, a hosted Supabase project, the GitHub secrets and the branch ruleset have not been created; see [One-time setup](#one-time-setup). The workflows have been linted and their commands run locally, but they have not run on GitHub yet.
 - **AI summaries were not evaluated on live data**, because no API key was available. The grounding check only verifies numbers; it cannot prove every claim is faithful, so the UI always links to the original and labels AI text.
 - **The topic and region classifier is keyword-based.** It is transparent and fast but imperfect: wire stories in national feeds, and puns such as "Off Campus", can be misfiled. Topics are not reclassified with the LLM.
 - **English-only feeds.** The PDF fonts cover Latin script; other scripts are transliterated or dropped in print.
