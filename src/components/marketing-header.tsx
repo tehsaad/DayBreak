@@ -5,27 +5,87 @@ import { storageMode } from "@/lib/env";
 export async function MarketingHeader() {
   const reader = await getReader().catch(() => null);
   const accounts = storageMode() === "supabase";
+
   return (
-    <header className="no-print sticky top-0 z-30 border-b border-rule/70 bg-paper/90 backdrop-blur supports-[backdrop-filter]:bg-paper/75">
-      <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3 sm:px-6">
-        <Link href="/" className="font-display text-xl font-extrabold tracking-[0.18em] text-ink" aria-label="DAYBREAK home">
+    <header className="no-print sticky top-0 z-40 border-b border-rule/80 bg-paper/95 backdrop-blur-md supports-[backdrop-filter]:bg-paper/85">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-8 px-4 py-3 sm:px-6 lg:px-8">
+        {/* Zone 1: Single text element wordmark in display face */}
+        <Link
+          href="/"
+          className="font-display text-xl font-black tracking-[0.22em] text-ink transition-colors hover:text-accent whitespace-nowrap shrink-0"
+          aria-label="DAYBREAK home"
+        >
           DAYBREAK
         </Link>
-        <nav aria-label="Site" className="hidden items-center gap-5 font-sans text-sm text-ink-soft md:flex">
-          <Link href="/#how" className="hover:text-ink">How it works</Link>
-          <Link href="/#preview" className="hover:text-ink">Today&apos;s preview</Link>
-          <Link href="/#sources" className="hover:text-ink">Sources</Link>
+
+        {/* Zone 2: 4-5 clean single-line text navigation links */}
+        <nav
+          aria-label="Main Navigation"
+          className="hidden items-center gap-7 font-sans text-xs font-semibold tracking-wider uppercase text-muted md:flex"
+        >
+          <a
+            href="#today"
+            className="transition-colors hover:text-ink whitespace-nowrap shrink-0"
+          >
+            Today&apos;s Edition
+          </a>
+          <a
+            href="#perspectives"
+            className="transition-colors hover:text-ink whitespace-nowrap shrink-0"
+          >
+            Full Coverage
+          </a>
+          <a
+            href="#interests"
+            className="transition-colors hover:text-ink whitespace-nowrap shrink-0"
+          >
+            Your Topics
+          </a>
+          <a
+            href="#features"
+            className="transition-colors hover:text-ink whitespace-nowrap shrink-0"
+          >
+            The Experience
+          </a>
+          <a
+            href="#sources"
+            className="transition-colors hover:text-ink whitespace-nowrap shrink-0"
+          >
+            Newsrooms
+          </a>
         </nav>
-        <div className="ml-auto flex items-center gap-2 font-sans text-sm">
+
+        {/* Zone 3: 1 primary action */}
+        <div className="flex items-center gap-3 shrink-0 font-sans text-xs font-semibold">
           {reader ? (
-            <Link href="/newspaper" className="btn btn-primary !py-1.5">Open your paper</Link>
+            <Link
+              href="/newspaper"
+              className="btn btn-primary !px-4 !py-2 whitespace-nowrap shrink-0"
+            >
+              Open Your Paper
+            </Link>
           ) : accounts ? (
             <>
-              <Link href="/login" className="rounded px-3 py-1.5 text-ink-soft hover:bg-paper-deep hover:text-ink">Sign in</Link>
-              <Link href="/login?mode=signup" className="btn btn-primary !py-1.5">Get started</Link>
+              <Link
+                href="/login"
+                className="hidden sm:inline-block px-3 py-1.5 text-ink-soft hover:text-ink whitespace-nowrap shrink-0"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/login?mode=signup"
+                className="btn btn-primary !px-4 !py-2 whitespace-nowrap shrink-0"
+              >
+                Read Your Edition
+              </Link>
             </>
           ) : (
-            <Link href="/onboarding" className="btn btn-primary !py-1.5">Get started</Link>
+            <Link
+              href="/onboarding"
+              className="btn btn-primary !px-4 !py-2 whitespace-nowrap shrink-0"
+            >
+              Read Your Edition
+            </Link>
           )}
         </div>
       </div>
