@@ -7,12 +7,13 @@ Where each key goes: [`docs/API_KEYS.md`](API_KEYS.md).
 ## 1. Services
 
 - [ ] Supabase project created; migration `supabase/migrations/20261017000000_daybreak_init.sql` applied (`supabase db push`, or the SQL editor).
-- [ ] Supabase Auth: Site URL set to the production URL. Redirect URLs include `https://<domain>/auth/callback` (plus `https://*-<team>.vercel.app/auth/callback` if previews use this project).
+- [ ] Supabase Auth: Site URL `https://daybreak-gilt.vercel.app`; redirect URL `https://daybreak-gilt.vercel.app/auth/callback` (plus `http://localhost:3000/auth/callback`).
 - [ ] An LLM API key obtained (Anthropic by default, or OpenAI, Google or Vercel AI Gateway).
 
 ## 2. Vercel project
 
 - [x] Vercel project `daybreak` (team `teh-saad`) created and connected to `tehsaad/DayBreak`, with Node 22.x and production branch `main`.
+- [x] Free production domain `https://daybreak-gilt.vercel.app`. Deployment Protection is set to Standard: production is public, previews need a Vercel login.
 - [ ] Production environment variables set. Names must match exactly:
   - [ ] `NEXT_PUBLIC_SUPABASE_URL`
   - [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` (or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`)
@@ -27,7 +28,7 @@ Where each key goes: [`docs/API_KEYS.md`](API_KEYS.md).
 ## 3. GitHub repository settings
 
 - [ ] Actions secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` (optionally `VERCEL_AUTOMATION_BYPASS_SECRET`).
-- [ ] Actions variable (optional): `PRODUCTION_URL`.
+- [x] Actions variable `PRODUCTION_URL` = `https://daybreak-gilt.vercel.app`.
 - [ ] Environment `production`, limited to the `main` branch (optionally with required reviewers).
 - [ ] Ruleset for `main`:
   - [ ] require a pull request before merging
@@ -43,7 +44,7 @@ Where each key goes: [`docs/API_KEYS.md`](API_KEYS.md).
 - [ ] In Supabase, rows exist in `editions`, `edition_stories`, `feedback_events` and `saved_articles`.
 - [ ] A second account opening the first user's `/paper/<id>` gets "not found".
 - [ ] Vercel → Settings → Cron Jobs lists `/api/cron/ingest` and `/api/cron/prepare`.
-- [ ] `curl -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/ingest` returns 200; the same request without the header returns 401.
+- [ ] `curl -H "Authorization: Bearer $CRON_SECRET" https://daybreak-gilt.vercel.app/api/cron/ingest` returns 200; the same request without the header returns 401.
 
 ## Rollback
 

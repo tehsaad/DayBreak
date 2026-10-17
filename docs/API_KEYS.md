@@ -1,5 +1,7 @@
 # API keys and where they go
 
+**Production URL (free Vercel domain):** https://daybreak-gilt.vercel.app. This address is public; pull-request previews and per-deployment URLs stay behind Vercel login (Standard Protection).
+
 Every key is optional for local development. A **production deploy** needs Supabase, an AI provider and `CRON_SECRET`; the deploy workflow checks for them by name and refuses to deploy otherwise. Paste keys only into the places below, never into code, issues or chat.
 
 | What | Variable name(s) | Get it from | Put it in |
@@ -53,4 +55,6 @@ Once all three exist, the next successful CI run on `main` triggers **Deploy pro
 ## After adding Supabase keys
 
 1. Apply the database schema: `supabase/migrations/20261017000000_daybreak_init.sql`, pasted into Supabase → SQL Editor (or `supabase db push`).
-2. In Supabase → Authentication → URL Configuration, set the Site URL to the production URL and add `https://<production-domain>/auth/callback` to the redirect URLs.
+2. In Supabase → Authentication → URL Configuration:
+   - **Site URL:** `https://daybreak-gilt.vercel.app`
+   - **Redirect URLs:** `https://daybreak-gilt.vercel.app/auth/callback` and `http://localhost:3000/auth/callback`

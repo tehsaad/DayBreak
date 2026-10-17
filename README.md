@@ -31,7 +31,7 @@ DAYBREAK gathers real reporting from 43 RSS feeds (21 publishers, including Dawn
 10. [Project layout](#project-layout)
 11. [Known limitations](#known-limitations)
 
-**Adding API keys:** see [`docs/API_KEYS.md`](docs/API_KEYS.md). Also see [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) (five-minute Loom script), [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) and [`docs/EVALUATION.md`](docs/EVALUATION.md) (measured results).
+**Live URL (once deployed):** https://daybreak-gilt.vercel.app, a free Vercel domain. **Adding API keys:** see [`docs/API_KEYS.md`](docs/API_KEYS.md). Also see [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) (five-minute Loom script), [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) and [`docs/EVALUATION.md`](docs/EVALUATION.md) (measured results).
 
 ---
 
@@ -244,7 +244,7 @@ Steps 1 and the credentials check run in a separate **Preflight** job with no en
    - optionally `VERCEL_AUTOMATION_BYPASS_SECRET`
 
    Application secrets live in Vercel, not GitHub.
-2. **Secrets and variables → Actions → Variables:** *(optional)* `PRODUCTION_URL`, e.g. `https://daybreak.vercel.app`, to verify the public domain after promotion.
+2. **Secrets and variables → Actions → Variables:** `PRODUCTION_URL` = `https://daybreak-gilt.vercel.app` (already set). The public domain is verified after promotion.
 3. **Environments → New environment `production`:** restrict deployment branches to `main`. Optionally add required reviewers for a manual approval before each production deploy.
 4. **Branches → Add branch ruleset for `main`:**
    - require a pull request before merging
