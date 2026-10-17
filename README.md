@@ -31,7 +31,7 @@ DAYBREAK gathers real reporting from 43 RSS feeds (21 publishers, including Dawn
 10. [Project layout](#project-layout)
 11. [Known limitations](#known-limitations)
 
-**Live URL (once deployed):** https://daybreak-gilt.vercel.app, a free Vercel domain. **Adding API keys:** see [`docs/API_KEYS.md`](docs/API_KEYS.md). Also see [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) (five-minute Loom script), [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) and [`docs/EVALUATION.md`](docs/EVALUATION.md) (measured results).
+**Email:** see [`docs/EMAIL_SETUP.md`](docs/EMAIL_SETUP.md) (Resend SMTP for Supabase, templates, welcome email). **Live URL:** https://daybreak-gilt.vercel.app, a free Vercel domain. **Adding API keys:** see [`docs/API_KEYS.md`](docs/API_KEYS.md). Also see [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) (five-minute Loom script), [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) and [`docs/EVALUATION.md`](docs/EVALUATION.md) (measured results).
 
 ---
 
@@ -136,6 +136,7 @@ Copy [`.env.example`](.env.example) to `.env.local` locally, or set these variab
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `AI_GATEWAY_API_KEY` | optional | Provider key. On Vercel, `LLM_PROVIDER=gateway` needs **no key**: the AI Gateway authenticates with the deployment's OIDC token. Locally, set `LLM_PROVIDER=gateway` and use `vercel env pull` to get `VERCEL_OIDC_TOKEN`. Gemini / Google AI Studio keys work under `GOOGLE_GENERATIVE_AI_API_KEY`, `GEMINI_API_KEY` or `GOOGLE_AI_STUDIO_API_KEY` |
 | `GNEWS_API_KEY` | optional | [GNews](https://gnews.io) key. Adds GNews top headlines (Pakistan national and business, world, technology, science, health, sports, entertainment) to the RSS sources. Each category is fetched at most every `GNEWS_FRESH_MINUTES` (default 180), about 64 of the free plan's 100 requests a day. The key is never logged |
 | `LLM_TIMEOUT_MS`, `LLM_MAX_OUTPUT_TOKENS` | optional | Defaults 30000 and 4000 |
+| `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | optional | Server-only. One-time welcome email after a first Google sign-in (e.g. `DAYBREAK <hello@tehsaad.site>`). Supabase's own auth emails use Resend SMTP configured in the Supabase dashboard |
 | `CRON_SECRET` | for cron | Random string. Vercel sends it as `Authorization: Bearer …`. Cron routes refuse to run without it |
 | `CRON_USE_AI` | optional | `false` to prepare scheduled editions without LLM calls |
 | `NEWS_MODE` | optional | `live` (default) or `sample` |
@@ -416,9 +417,9 @@ These checks were run for this submission:
 
 | Check | Command | Result |
 |---|---|---|
-| Unit and integration tests | `npm test` | **128 passed** (15 files) |
+| Unit and integration tests | `npm test` | **145 passed** (18 files) |
 | Migration, RLS and immutability on real Postgres (PGlite) | part of `npm test` (`tests/rls.test.ts`) | passed |
-| End-to-end | `npm run test:e2e` | **9 passed**: the reader journey (with Explore follow and Search), cross-reader isolation, mobile, and 6 Supabase-mode auth tests against an unreachable Supabase. Run with bundled Chromium and `NEWS_MODE=sample` (the CI configuration) |
+| End-to-end | `npm run test:e2e` | **13 passed**: landing CTAs and reduced motion, search recommendations, debounce and recent searches, broken-image fallbacks, plus the reader journey (with Explore follow and Search), cross-reader isolation, mobile, and 6 Supabase-mode auth tests against an unreachable Supabase. Run with bundled Chromium and `NEWS_MODE=sample` (the CI configuration) |
 | Live RLS isolation on the production database | Supabase MCP `execute_sql`, rolled back | Bob saw 0 of Alice's editions, stories, preferences, feedback and bookmarks; cross-user writes blocked; published stories immutable; anonymous users saw nothing |
 | Workflow syntax | `actionlint` 1.7.12 with shellcheck 0.11.0 | no findings |
 | Types | `npm run typecheck` | clean |
