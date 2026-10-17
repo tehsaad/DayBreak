@@ -13,7 +13,15 @@ export const metadata: Metadata = {
   description: "A personal morning paper: real reporting from trusted publishers, ranked for you, explained, and printable.",
   applicationName: "DAYBREAK",
   appleWebApp: { capable: true, title: "DAYBREAK", statusBarStyle: "default" },
-  icons: { apple: "/icons/apple-touch-icon.png" },
+  // Setting icons here replaces Next's automatic icon.svg link, so list every icon explicitly.
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/icons/apple-touch-icon.png",
+  },
   metadataBase: new URL(process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000"),
 };
 
