@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -83,5 +84,21 @@ describe("deploy gate: health smoke test", () => {
     const { code, out } = run("check-health.mjs", "<html>Authentication Required</html>");
     expect(code).toBe(1);
     expect(out).toMatch(/did not return JSON/);
+  });
+});
+
+describe("deploy workflow smoke test", () => {
+  const wf = readFileSync(".github/workflows/deploy-production.yml", "utf8");
+  const step = wf.slice(wf.indexOf("- name: Smoke-test candidate"), wf.indexOf("- name: Promote candidate to production"));
+  it("never passes CLI flags or secrets to curl on the command line", () => {
+    expect(step).not.toMatch(/vercel\S*"? curl[^\n]*--token/);
+    expect(step).not.toMatch(/-H "x-vercel-protection-bypass: \$/);
+    expect(step).toContain("-H @-");
+    expect(step).toMatch(/--yes -- \\/);
+  });
+  it("checks the HTTP status, protection responses and the health body", () => {
+    expect(step).toContain('if [ "$status" != "200" ]');
+    expect(step).toMatch(/401\|403/);
+    expect(step).toContain("node scripts/ci/check-health.mjs");
   });
 });
