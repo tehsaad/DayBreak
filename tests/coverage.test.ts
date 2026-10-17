@@ -156,3 +156,45 @@ describe("API payloads", () => {
     expect(publicBookmark({ article: { sourceId: "x", excerpt: long } }).article.excerpt.length).toBeLessThanOrEqual(DISPLAY_EXCERPT_MAX);
   });
 });
+
+describe("Story Explorer on real headlines (17 Oct 2026 pool)", () => {
+  const h = (id: string, publisher: string, title: string, regions: string[], hour: number, topic = "world") =>
+    makeArticle({ id, publisher, title, regions, topics: [topic as "world"], publishedAt: at(hour), description: "" });
+  const pool = [
+    h("wb1", "The Guardian", "Israeli settlers attack olive farmers and Washington Post journalist in West Bank", ["US"], 8),
+    h("wb2", "NPR", "Israeli settlers beat Palestinians and a U.S. photojournalist in West Bank attacks", ["US"], 9),
+    h("wb3", "BBC News", "Palestinians and US journalist injured by Israeli settlers in West Bank harvest attack", ["US"], 10),
+    h("wb4", "UN News", "Settler attacks on West Bank olive harvest injure Palestinians and a journalist", ["GLOBAL"], 7),
+    h("wb5", "BBC News", "China tells Israel to stop 'forced establishment' of West Bank settlements", ["GLOBAL"], 12),
+    h("t1", "Business Recorder", "Trump waives key Russia-related sanctions, tariffs before they take effect under new law", ["US"], 4),
+    h("t2", "BBC News", "Trump waives several Russia sanctions as row with Zelensky intensifies", ["US"], 5),
+    h("t3", "BBC News", "Trump denies limiting Ukraine access to Starlink network", ["GLOBAL"], 13),
+    h("t4", "NPR", "Trump promised a swing district blitz. He's going to a lot of very red states", ["GLOBAL"], 3),
+    h("c1", "Business Recorder", "India detains ‘cockroach’ founder, student leaders", ["IN"], 11),
+    h("c2", "The Guardian", "India’s Cockroach Janta party leader arrested amid crackdown on protests", ["IN"], 20),
+    h("c3", "BBC News", "India's 'cockroach' party founder detained ahead of protest", ["IN"], 21),
+    h("x1", "Geo News", "Parts of Karachi to face gas supply suspension this weekend: SSGC", ["PK"], 8, "pakistan"),
+    h("x2", "The Express Tribune", "H-9, G-6 markets face temporary closure", ["PK"], 9, "pakistan"),
+  ];
+
+  it("shows all four publishers that reported the West Bank attack, and not the separate settlements story", () => {
+    const c = findCoverage(pool[0]!, pool);
+    expect(c.reports.map((r) => r.publisher).sort()).toEqual(["BBC News", "NPR", "The Guardian", "UN News"]);
+    expect(c.reports.map((r) => r.id)).not.toContain("wb5");
+  });
+
+  it("groups the three 'cockroach' party reports despite different wording", () => {
+    expect(findCoverage(pool[9]!, pool).reports).toHaveLength(3);
+  });
+
+  it("keeps separate Trump stories apart: sanctions ≠ Starlink ≠ campaign", () => {
+    const c = findCoverage(pool[5]!, pool);
+    expect(c.reports.map((r) => r.id).sort()).toEqual(["t1", "t2"]);
+    expect(findCoverage(pool[7]!, pool).reports.map((r) => r.id)).toEqual(["t3"]);
+    expect(findCoverage(pool[8]!, pool).reports.map((r) => r.id)).toEqual(["t4"]);
+  });
+
+  it("does not merge unrelated local stories that share generic words ('face')", () => {
+    expect(findCoverage(pool[12]!, pool).reports).toHaveLength(1);
+  });
+});

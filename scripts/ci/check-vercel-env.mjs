@@ -40,7 +40,7 @@ export function parseEnvNames(text) {
 export const OPTIONAL = [
   {
     label: "LLM provider credentials (AI summaries and analysis)",
-    anyOf: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_AI_STUDIO_API_KEY", "AI_GATEWAY_API_KEY", "LLM_PROVIDER"],
+    anyOf: ["GROQ_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_AI_STUDIO_API_KEY", "AI_GATEWAY_API_KEY", "LLM_PROVIDER"],
   },
   { label: "GNews API key (extra news source)", anyOf: ["GNEWS_API_KEY"] },
   { label: "Resend (welcome email)", anyOf: ["RESEND_API_KEY"] },

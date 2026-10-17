@@ -1,0 +1,40 @@
+# Keeps the news pool fresh. Vercel Hobby crons run at most once a day, so this schedule calls the
+# protected ingestion endpoint every 30 minutes. It needs the repository secret CRON_SECRET (the
+# same value as the Vercel CRON_SECRET); without it every run is a no-op with a notice.
+name: Scheduled ingestion
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - name: Trigger ingestion
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set +x
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::notice title=Ingestion skipped::Add the CRON_SECRET repository secret (same value as in Vercel) to enable scheduled ingestion."
+            exit 0
+          fi
+          # Header read from stdin so the secret never appears on a command line.
+          out=$(printf 'authorization: Bearer %s\n' "$CRON_SECRET" |
+            curl --silent --show-error --max-time 150 --retry 2 --retry-delay 10 -H @- -w '\n%{http_code}' "${PRODUCTION_URL:-https://daybreak-gilt.vercel.app}/api/cron/ingest")
+          status=${out##*$'\n'}; body=${out%$'\n'*}
+          echo "HTTP $status"
+          printf '%s\n' "$body" | head -c 2000
+          [ "$status" = "200" ]

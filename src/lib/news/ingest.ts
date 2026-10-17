@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { aiHandle } from "../ai/handle";
+import { precomputeSummaries, type SummaryRun } from "../ai/summaries";
 import { gnewsApiKey, LIMITS } from "../env";
 import { safeFetch } from "../security/safe-fetch";
 import type { Store } from "../store/types";
@@ -75,6 +77,23 @@ async function fetchGNews(source: SourceDef, health: SourceHealth, opts: Require
   }
 }
 
+/**
+ * Turns a raw fetch failure into an actionable status message for the sources dashboard.
+ * Keeps the original code in the text (e.g. "HTTP 403") so logs remain searchable.
+ */
+export function describeFeedError(raw: string): string {
+  const status = Number(/HTTP (\d{3})/.exec(raw)?.[1]);
+  if (status === 401 || status === 403)
+    return `Blocked by the publisher (HTTP ${status}): the feed refuses requests from DAYBREAK's servers. DAYBREAK does not bypass this; it needs the publisher's permission or another source.`;
+  if (status === 404 || status === 410) return `Feed not found (HTTP ${status}): the publisher moved or removed this feed URL.`;
+  if (status >= 300 && status < 400) return `Unexpected redirect (HTTP ${status}): the feed URL has changed.`;
+  if (status >= 500) return `Publisher server error (HTTP ${status}), retried once.`;
+  if (/content type|not an RSS|Invalid XML/i.test(raw)) return `Not a usable feed: ${raw.slice(0, 160)} (an HTML page or invalid XML instead of RSS/Atom).`;
+  if (/abort|timeout|timed out/i.test(raw)) return "Timed out waiting for the publisher.";
+  if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|fetch failed/i.test(raw)) return `Network error reaching the publisher (${raw.slice(0, 80)}).`;
+  return raw.slice(0, 300);
+}
+
 async function fetchSource(source: SourceDef, health: SourceHealth, opts: Required<Pick<IngestOptions, "timeoutMs">> & IngestOptions, now: Date): Promise<SourceResult> {
   if (source.kind === "gnews") return fetchGNews(source, health, opts, now);
   const started = Date.now();
@@ -133,7 +152,8 @@ async function fetchSource(source: SourceDef, health: SourceHealth, opts: Requir
       break;
     }
   }
-  return { sourceId: source.id, outcome: "error", items: [], error: lastError.slice(0, 300), ms: Date.now() - started, health: { ...h, lastStatus: "error", lastError: lastError.slice(0, 300), consecutiveFailures: h.consecutiveFailures + 1 } };
+  const message = describeFeedError(lastError);
+  return { sourceId: source.id, outcome: "error", items: [], error: message, ms: Date.now() - started, health: { ...h, lastStatus: "error", lastError: message, consecutiveFailures: h.consecutiveFailures + 1 } };
 }
 
 /**
@@ -217,11 +237,44 @@ export function summarizeRun(run: IngestionRun) {
 }
 
 /**
- * Run a bounded ingestion unless one finished within FEED_FRESH_MINUTES. Used for background
- * refreshes (e.g. after serving the public homepage) so visitors never wait on feeds.
+ * Ingest, then pre-summarise the newest articles with the configured LLM (Groq first) so editions
+ * reuse stored summaries instead of calling the model while a reader waits. A summarisation
+ * failure never fails the ingestion.
+ */
+export async function refreshNews(store: Store, opts: { trigger: IngestionRun["trigger"]; budgetMs: number; totalMs?: number; log?: (msg: string, data?: Record<string, unknown>) => void }) {
+  const log = opts.log ?? (() => undefined);
+  const deadline = Date.now() + (opts.totalMs ?? opts.budgetMs + 20_000);
+  const run = await ingest({ store, trigger: opts.trigger, budgetMs: opts.budgetMs, log });
+  let summaries: SummaryRun | null = null;
+  const ai = aiHandle();
+  if (ai) {
+    try {
+      summaries = await precomputeSummaries(store, ai, { deadline });
+      log("ai_summaries", { ...summaries });
+    } catch (err) {
+      log("ai_summaries_failed", { error: (err as Error).message?.slice(0, 160) });
+    }
+  }
+  return { run, summaries };
+}
+
+let inFlight: Promise<unknown> | null = null;
+
+/**
+ * Run a bounded refresh unless one finished within FEED_FRESH_MINUTES. Used for background
+ * refreshes after serving a page (via `after()`), so visitors never wait on feeds, and so news
+ * stays fresh even though Vercel Hobby crons run only once a day. One refresh per instance at a
+ * time; ingestion is idempotent, so overlapping instances are harmless.
  */
 export async function refreshIfStale(store: Store, log?: (msg: string, data?: Record<string, unknown>) => void): Promise<IngestionRun | null> {
+  if (inFlight) return null;
   const last = await store.lastIngestionRun().catch(() => null);
   if (last && Date.now() - Date.parse(last.finishedAt) < LIMITS.feedFreshMinutes * 60_000) return null;
-  return ingest({ store, trigger: "on_demand", budgetMs: 20_000, log });
+  const p = refreshNews(store, { trigger: "on_demand", budgetMs: 25_000, log });
+  inFlight = p;
+  try {
+    return (await p).run;
+  } finally {
+    inFlight = null;
+  }
 }

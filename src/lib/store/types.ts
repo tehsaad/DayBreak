@@ -37,6 +37,8 @@ export interface CachedSummary {
   summary: string;
   model: string;
   createdAt: string;
+  /** contentHash() of the article text the summary was written from; null for legacy rows. */
+  contentHash?: string | null;
 }
 
 /**

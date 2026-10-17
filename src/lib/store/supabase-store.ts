@@ -307,14 +307,14 @@ export class SupabaseStore implements Store {
   private async pg_getCachedSummaries(ids: string[], model: string): Promise<CachedSummary[]> {
     if (ids.length === 0) return [];
     const data = check(await this.svc.from("article_summaries").select("*").eq("model", model).in("article_id", ids), "summary cache") as Row[];
-    return data.map((r) => ({ articleId: r.article_id as string, summary: r.summary as string, model: r.model as string, createdAt: r.created_at as string }));
+    return data.map((r) => ({ articleId: r.article_id as string, summary: r.summary as string, model: r.model as string, createdAt: r.created_at as string, contentHash: (r.content_hash as string | null) ?? null }));
   }
 
   private async pg_saveCachedSummaries(items: CachedSummary[]): Promise<void> {
     if (items.length === 0) return;
     // Only cache summaries for articles that exist in the shared table (FK).
     const known = new Set(((check(await this.svc.from("articles").select("id").in("id", items.map((i) => i.articleId)), "article lookup") as Row[]) ?? []).map((r) => r.id as string));
-    const rows = items.filter((i) => known.has(i.articleId)).map((i) => ({ article_id: i.articleId, model: i.model, summary: i.summary, created_at: i.createdAt }));
+    const rows = items.filter((i) => known.has(i.articleId)).map((i) => ({ article_id: i.articleId, model: i.model, summary: i.summary, created_at: i.createdAt, content_hash: i.contentHash ?? null }));
     if (rows.length) check(await this.svc.from("article_summaries").upsert(rows, { onConflict: "article_id,model" }), "summary cache save");
   }
 

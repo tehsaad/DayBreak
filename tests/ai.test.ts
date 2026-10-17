@@ -15,6 +15,7 @@ const store = () => new FileStore(path.join(mkdtempSync(path.join(tmpdir(), "day
 
 function mockModel(respond: (prompt: string) => unknown, calls: string[] = []) {
   return new MockLanguageModelV4({
+    modelId: "mock-1",
     doGenerate: async (options) => {
       const prompt = JSON.stringify(options.prompt);
       calls.push(prompt);

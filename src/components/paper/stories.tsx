@@ -45,7 +45,7 @@ function SourceLink({ editionId, story, className = "" }: { editionId: string; s
     </a>
     {!story.article.sample ? (
       <Link href={`/story/${story.article.id}`} className="no-print ml-4 inline-flex items-center gap-1 font-sans text-xs font-semibold text-ink underline-offset-2 hover:underline">
-        Full coverage{story.alsoReportedBy.length ? ` · ${story.alsoReportedBy.length + 1} publishers` : ""}
+        Full coverage
       </Link>
     ) : null}
     </>

@@ -58,3 +58,25 @@ Once all three exist, the next successful CI run on `main` triggers **Deploy pro
 2. In Supabase → Authentication → URL Configuration:
    - **Site URL:** `https://daybreak-gilt.vercel.app`
    - **Redirect URLs:** `https://daybreak-gilt.vercel.app/auth/callback` and `http://localhost:3000/auth/callback`
+
+## Groq (preferred LLM) and Gemini (fallback)
+
+| Variable | Where | Notes |
+|---|---|---|
+| `GROQ_API_KEY` | Vercel (Production), server-only | From console.groq.com → API Keys. When set, Groq is the primary provider. |
+| `GROQ_MODEL` | optional | Default `openai/gpt-oss-20b` (Groq production model, ~1,000 tokens/s). `openai/gpt-oss-120b` for higher quality. Called with low reasoning effort. |
+| `GEMINI_API_KEY` | Vercel, server-only | Automatic fallback when Groq errors, rate-limits or times out. |
+| `LLM_FALLBACK_PROVIDER` | optional | Force a fallback provider, or `none` to disable it. |
+| `LLM_CONCURRENCY` | optional | Max simultaneous LLM calls per instance (default 4). |
+| `AI_SUMMARIES_PER_RUN` | optional | Articles pre-summarised after each ingestion (default 40), the main cost control. |
+
+Summaries are generated in the background after ingestion. They're stored with a content hash
+(`article_summaries.content_hash`) and reused until the article text or prompt version changes,
+then labelled with the model that actually answered. `/api/health` shows per-provider call
+counts, error kinds and p50/p95 latency for the current instance, but never messages or keys.
+
+## Scheduled ingestion
+
+Vercel Hobby crons run once a day. `.github/workflows/ingest.yml` calls `/api/cron/ingest` every
+30 minutes once the GitHub repository secret `CRON_SECRET` is set to the same value as in Vercel.
+Page visits also trigger a background refresh when the pool is older than `FEED_FRESH_MINUTES`.

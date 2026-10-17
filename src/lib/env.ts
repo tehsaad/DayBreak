@@ -3,9 +3,11 @@
  * to client components (only NEXT_PUBLIC_* values are safe for the browser).
  */
 
-export type LlmProvider = "anthropic" | "openai" | "google" | "gateway";
+export type LlmProvider = "groq" | "anthropic" | "openai" | "google" | "gateway";
 
+/** Groq default verified against console.groq.com/docs/models (production models, Oct 2026). */
 const DEFAULT_MODELS: Record<LlmProvider, string> = {
+  groq: "openai/gpt-oss-20b",
   anthropic: "claude-haiku-5-5",
   openai: "gpt-5-mini",
   google: "gemini-3.5-flash",
@@ -17,6 +19,7 @@ const DEFAULT_MODELS: Record<LlmProvider, string> = {
  * GEMINI_API_KEY and GOOGLE_AI_STUDIO_API_KEY are aliases of the AI SDK's own variable name.
  */
 export const KEY_VARS: Record<LlmProvider, string[]> = {
+  groq: ["GROQ_API_KEY"],
   anthropic: ["ANTHROPIC_API_KEY"],
   openai: ["OPENAI_API_KEY"],
   google: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_AI_STUDIO_API_KEY"],
@@ -53,7 +56,7 @@ export interface LlmConfig {
 export function llmConfig(): LlmConfig | null {
   const requested = value("LLM_PROVIDER")?.toLowerCase();
   if (requested === "none" || requested === "off") return null;
-  const candidates: LlmProvider[] = requested && requested in KEY_VARS ? [requested as LlmProvider] : ["anthropic", "openai", "google", "gateway"];
+  const candidates: LlmProvider[] = requested && requested in KEY_VARS ? [requested as LlmProvider] : PROVIDER_ORDER;
   for (const provider of candidates) {
     // OIDC never selects the gateway on its own: it must be requested with LLM_PROVIDER=gateway.
     const oidc = provider === "gateway" && requested === "gateway" && (Boolean(value("VERCEL_OIDC_TOKEN")) || Boolean(value("VERCEL")));
@@ -61,13 +64,38 @@ export function llmConfig(): LlmConfig | null {
     if (hasKey) {
       return {
         provider,
-        model: value("LLM_MODEL") ?? DEFAULT_MODELS[provider],
+        model: value("LLM_MODEL") ?? modelFor(provider),
         timeoutMs: clampInt(value("LLM_TIMEOUT_MS"), 5_000, 55_000, 30_000),
         maxOutputTokens: clampInt(value("LLM_MAX_OUTPUT_TOKENS"), 512, 8_000, 4_000),
       };
     }
   }
   return null;
+}
+
+/** Fastest first: Groq for summaries, then the others. */
+const PROVIDER_ORDER: LlmProvider[] = ["groq", "anthropic", "openai", "google", "gateway"];
+const MODEL_VARS: Partial<Record<LlmProvider, string[]>> = { groq: ["GROQ_MODEL"], google: ["GEMINI_MODEL", "GOOGLE_MODEL"] };
+
+function modelFor(provider: LlmProvider): string {
+  for (const name of MODEL_VARS[provider] ?? []) {
+    const v = value(name);
+    if (v) return v;
+  }
+  return DEFAULT_MODELS[provider];
+}
+
+/**
+ * The provider used when the primary fails (error, rate limit, timeout): LLM_FALLBACK_PROVIDER,
+ * or else the next provider in PROVIDER_ORDER that has a key. "none" disables the fallback.
+ */
+export function llmFallbackConfig(primary: LlmConfig | null = llmConfig()): LlmConfig | null {
+  if (!primary) return null;
+  const requested = value("LLM_FALLBACK_PROVIDER")?.toLowerCase();
+  if (requested === "none" || requested === "off") return null;
+  const candidates = requested && requested in KEY_VARS ? [requested as LlmProvider] : PROVIDER_ORDER.filter((p) => p !== "gateway");
+  const provider = candidates.find((p) => p !== primary.provider && Boolean(providerApiKey(p)));
+  return provider ? { ...primary, provider, model: modelFor(provider) } : null;
 }
 
 /** Human-readable reason AI is off, for honest UI labelling. */

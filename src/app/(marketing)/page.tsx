@@ -71,7 +71,7 @@ function StoryCard({ a, delay, big = false }: { a: Article; delay: number; big?:
 
 async function FrontPage() {
   const data = await landingData();
-  if (data.isSample && newsMode() === "live") {
+  if (newsMode() === "live") {
     after(() => refreshIfStale(getServiceStore()).catch((e) => log("landing_ingest_failed", { error: (e as Error).message?.slice(0, 120) })));
   }
   const [lead, ...rest] = data.stories;

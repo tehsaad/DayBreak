@@ -10,6 +10,7 @@ import { aiHandle } from "@/lib/ai/handle";
 import { analyseCoverage, coverageKey, isCoverageCached, type CitedPoint, type CoverageAnalysis } from "@/lib/ai/coverage";
 import { findCoverage, type Coverage } from "@/lib/coverage/group";
 import { displayExcerpt } from "@/lib/news/rights";
+import { activeSources } from "@/lib/news/sources";
 import { publicMemo } from "@/lib/public-cache";
 import { safeLinkUrl } from "@/lib/security/url";
 import { requireReader } from "@/lib/server/page-reader";
@@ -113,7 +114,12 @@ export default async function StoryPage({ params }: PageProps<"/story/[id]">) {
   if (!found) notFound();
   // Shared public news pool, computed once per instance every few minutes.
   const pool = await publicMemo("coverage-pool", 5 * 60_000, () => reader.store.listArticles({ sinceHours: 96, limit: 1500 }));
-  const coverage = findCoverage(found, pool);
+  const [coverage, health] = [findCoverage(found, pool), await publicMemo("source-health", 5 * 60_000, () => reader.store.getSourceHealth()).catch(() => [])];
+  const failing = activeSources().filter((src) => {
+    const h = health.find((x) => x.sourceId === src.id);
+    return !h?.lastSuccessAt || h.lastStatus === "error" || h.lastStatus === "rate_limited";
+  });
+  const failingPublishers = [...new Set(failing.map((f) => f.publisher))];
   const tz = prefs.timezone;
   const reports = coverage.reports;
 
@@ -129,6 +135,12 @@ export default async function StoryPage({ params }: PageProps<"/story/[id]">) {
           {coverage.lastSeen && coverage.lastSeen !== coverage.firstSeen ? ` · latest ${formatTime(coverage.lastSeen, tz)}` : ""}
         </p>
         <p className="mt-2 font-sans text-xs text-muted">{CONFIDENCE[coverage.confidence]}</p>
+        <p className="mt-1 font-sans text-xs text-muted" data-testid="coverage-count">
+          {reports.length} matching report{reports.length === 1 ? "" : "s"} from {reports.length} distinct publisher{reports.length === 1 ? "" : "s"}, searched across {new Set(pool.map((a) => a.publisher)).size} publishers&apos; last four days of stories.{" "}
+          {failingPublishers.length
+            ? `${failing.length} of ${activeSources().length} feeds are currently unavailable (${failingPublishers.slice(0, 4).join(", ")}${failingPublishers.length > 4 ? "…" : ""}), so their coverage can't appear here.`
+            : "All feeds loaded normally."}
+        </p>
       </header>
 
       <div className="mt-6">

@@ -39,3 +39,14 @@ appear.
    prompts do not consult it yet. This is a known gap to finish once terms are reviewed.*
 5. **Bias ratings / ownership.** DAYBREAK shows **no** bias scores or political labels, because
    it has no licensed, documented dataset for them. Add them only with a cited methodology.
+
+## Update: AI summaries (Groq / Gemini)
+
+- Summaries are written from the headline and the ≤300-character stored excerpt only. The model
+  is told to use its own words. Any output that reuses 8 or more consecutive words from the
+  source is rejected (`copiesSource`), as is any output with figures not in the source.
+- Paraphrasing is not treated as a licence. The per-source `ai: false` rule now removes a source
+  from every AI prompt (summaries, editions); the previously noted gap is closed.
+- Dawn: its feeds return HTTP 403 to DAYBREAK's cloud servers (they return 200 from a home
+  connection). DAYBREAK does not work around this. The source is shown as "Blocked by the
+  publisher" on the status page.

@@ -1,5 +1,6 @@
 import { generateText, Output, type LanguageModel } from "ai";
 import { z } from "zod";
+import { copiesSource } from "./summaries";
 import { numbersIn, truncateText, cleanText } from "../text";
 import { regionName, topicLabel } from "../topics";
 import type { ArticleSnapshot, BiggerPicture, Depth, EarlierCoverage, KnowledgeItem, ReaderPreferences } from "../types";
@@ -83,6 +84,8 @@ export interface EditorialResult {
   threeThings: KnowledgeItem[];
   rejected: { kind: string; id: string; reason: string }[];
   usage: { inputTokens: number | undefined; outputTokens: number | undefined };
+  /** The model that actually answered (the fallback's id when the primary failed). */
+  answeredBy?: string;
 }
 
 /** Remove control characters and anything that looks like our own delimiters. */
@@ -142,7 +145,7 @@ function cap(text: string | null | undefined, max: number): string | null {
 export async function runEditorial(model: LanguageModel, input: EditorialInput, opts: { timeoutMs: number; maxOutputTokens: number; editionArticles?: ArticleSnapshot[] }): Promise<EditorialResult> {
   const ids = input.stories.map((_, i) => `S${i + 1}`);
   const byShortId = new Map(ids.map((id, i) => [id, input.stories[i]!]));
-  const { output, usage } = await generateText({
+  const { output, usage, response } = await generateText({
     model,
     system: SYSTEM_PROMPT,
     prompt: buildEditorialPrompt(input, ids),
@@ -152,7 +155,7 @@ export async function runEditorial(model: LanguageModel, input: EditorialInput, 
     maxRetries: 1,
     timeout: opts.timeoutMs,
   });
-  return validateEditorial(output, input, byShortId, usage);
+  return { ...validateEditorial(output, input, byShortId, usage), answeredBy: response.modelId };
 }
 
 function sourceTextOf(s: EditorialStoryInput): string {
@@ -184,6 +187,10 @@ export function validateEditorial(
     }
     if (!numbersGrounded(summary, src)) {
       rejected.push({ kind: "summary", id: s.id, reason: "number not in source" });
+      continue;
+    }
+    if (copiesSource(summary, src) && summary !== story.cachedSummary) {
+      rejected.push({ kind: "summary", id: s.id, reason: "copies source wording" });
       continue;
     }
     const why = cap(s.whyItMatters, 260);

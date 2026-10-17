@@ -1,4 +1,29 @@
 import { expect, test } from "@playwright/test";
+import { FileStore } from "../src/lib/store/file-store";
+import { makeArticle } from "../tests/fixtures/articles";
+
+test("Full coverage shows every distinct publisher of the same event, and not unrelated stories", async ({ page }) => {
+  // Live (non-sample) reports written straight into the demo server's data file.
+  const at = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
+  const report = (id: string, publisher: string, title: string, h: number) =>
+    makeArticle({ id, publisher, title, topics: ["world"], regions: ["GLOBAL"], publishedAt: at(h), collectedAt: at(h), description: "", url: `https://example.org/${id}` });
+  await FileStore.inDir(process.env.E2E_DATA_DIR ?? ".data-e2e").upsertArticles([
+    report("e2ewb1", "The Guardian", "Israeli settlers attack olive farmers and Washington Post journalist in West Bank", 3),
+    report("e2ewb2", "NPR", "Israeli settlers beat Palestinians and a U.S. photojournalist in West Bank attacks", 2),
+    report("e2ewb3", "BBC News", "Palestinians and US journalist injured by Israeli settlers in West Bank harvest attack", 1),
+    report("e2ewb4", "UN News", "Settler attacks on West Bank olive harvest injure Palestinians and a journalist", 4),
+    report("e2eoth", "NPR", "Coastal homes burn as hot winds fuel California fires", 2),
+  ]);
+  await page.goto("/");
+  const origin = new URL(page.url()).origin;
+  await page.request.put("/api/preferences", { data: { displayName: "Cov", sections: ["world"], region: "PK", timezone: "Asia/Karachi" }, headers: { origin } });
+  await page.goto("/story/e2ewb1");
+  const cards = page.getByRole("heading", { name: "How each publisher reported it" }).locator("xpath=following-sibling::ol[1]/li");
+  await expect(cards).toHaveCount(4);
+  for (const p of ["The Guardian", "NPR", "BBC News", "UN News"]) await expect(page.getByRole("link", { name: new RegExp(`^Read at ${p}`) })).toBeVisible();
+  await expect(page.getByTestId("coverage-count")).toContainText("4 matching reports from 4 distinct publishers");
+  await expect(page.getByText("Coastal homes burn")).toHaveCount(0);
+});
 
 test("Story Explorer opens for a story, groups sources and labels the non-AI fallback", async ({ page }) => {
   await page.goto("/");

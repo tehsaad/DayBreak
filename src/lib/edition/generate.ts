@@ -9,7 +9,8 @@ import { computeLearnedProfile, topicWeights } from "../rank/learning";
 import { planEdition, type PlannedStory } from "../rank/plan";
 import { RANKING_VERSION, WEIGHTS } from "../rank/score";
 import type { Store } from "../store/types";
-import { displayExcerpt } from "../news/rights";
+import { displayExcerpt, rightsFor } from "../news/rights";
+import { contentHash } from "../ai/summaries";
 import type { Article, ArticleSnapshot, Edition, EditionStory, ReaderPreferences } from "../types";
 import { evidenceBiggerPicture, evidenceThreeThings, findEarlierCoverage, templateIntro } from "./evidence";
 
@@ -156,24 +157,27 @@ async function doGenerate(opts: GenerateOptions): Promise<GenerateResult> {
   if (opts.ai) {
     try {
       const cached = await store.getCachedSummaries(snapshots.map((s) => s.id), opts.ai.modelId);
-      const cachedById = new Map(cached.map((c) => [c.articleId, c.summary]));
+      // Reuse a cached summary only while the article text it was written from is unchanged.
+      const hashes = new Map(snapshots.map((s) => [s.id, contentHash(s)]));
+      const cachedById = new Map(cached.filter((c) => c.contentHash === hashes.get(c.articleId)).map((c) => [c.articleId, c.summary]));
       editorial = await runEditorial(
         opts.ai.model,
         {
           prefs,
           editionDate,
-          stories: plan.stories.map((s, i) => ({
+          // Sources whose rules forbid AI processing are left out of the prompt entirely.
+          stories: plan.stories.flatMap((s, i) => (rightsFor(snapshots[i]!.sourceId).ai ? [{
             article: snapshots[i]!,
             cachedSummary: cachedById.get(snapshots[i]!.id) ?? null,
             earlier: i < BIGGER_PICTURE_AT_GENERATION ? findEarlierCoverage(snapshots[i]!, history) : [],
             wantsBiggerPicture: i < BIGGER_PICTURE_AT_GENERATION,
-          })),
+          }] : [])),
         },
         { timeoutMs: opts.ai.timeoutMs, maxOutputTokens: opts.ai.maxOutputTokens },
       );
       const fresh = [...editorial.summaries.entries()].filter(([id]) => !cachedById.has(id));
       if (fresh.length) {
-        await store.saveCachedSummaries(fresh.map(([articleId, v]) => ({ articleId, summary: v.summary, model: opts.ai!.modelId, createdAt: now.toISOString() })));
+        await store.saveCachedSummaries(fresh.map(([articleId, v]) => ({ articleId, summary: v.summary, model: editorial!.answeredBy ?? opts.ai!.modelId, createdAt: now.toISOString(), contentHash: hashes.get(articleId) ?? null })));
       }
       if (editorial.rejected.length) log("ai_rejected_items", { count: editorial.rejected.length, reasons: editorial.rejected.slice(0, 10) });
       log("ai_editorial", { usage: editorial.usage, summaries: editorial.summaries.size });
@@ -233,7 +237,7 @@ async function doGenerate(opts: GenerateOptions): Promise<GenerateResult> {
     ai: {
       used: aiUsed,
       provider: aiUsed ? opts.ai?.provider ?? null : null,
-      model: aiUsed ? opts.ai?.modelId ?? null : null,
+      model: aiUsed ? editorial?.answeredBy ?? opts.ai?.modelId ?? null : null,
       note: aiNote,
     },
     sections: plan.sections,

@@ -94,7 +94,7 @@ export function validateCoverage(out: z.infer<typeof Schema>, reports: Article[]
  */
 export function analyseCoverage(model: LanguageModel, modelId: string, reports: Article[], opts: { timeoutMs: number }): Promise<CoverageAnalysis> {
   return publicMemo(coverageKey(modelId, reports), COVERAGE_TTL_MS, async () => {
-    const { output } = await generateText({
+    const { output, response } = await generateText({
       model,
       system: SYSTEM,
       prompt: prompt(reports),
@@ -104,6 +104,6 @@ export function analyseCoverage(model: LanguageModel, modelId: string, reports: 
       maxRetries: 1,
       timeout: opts.timeoutMs,
     });
-    return validateCoverage(output, reports, modelId);
+    return validateCoverage(output, reports, response.modelId || modelId);
   });
 }
