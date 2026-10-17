@@ -17,7 +17,7 @@ next-env.d.ts
 !.env.example
 
 # testing
-coverage/
+/coverage
 reports/
 playwright-report/
 test-results/
