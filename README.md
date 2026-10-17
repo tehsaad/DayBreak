@@ -482,7 +482,9 @@ docs/                       evaluation, demo script, deployment checklist, sampl
 
 ## Known limitations
 
-- **Not deployed yet.** The Vercel project, a hosted Supabase project, the GitHub secrets and the branch ruleset have not been created; see [One-time setup](#one-time-setup). The workflows have been linted and their commands run locally, but they have not run on GitHub yet.
+- **Deployed manually, not yet through the CI-gated workflow.** Production at https://daybreak-gilt.vercel.app was deployed with the Vercel CLI from a clean checkout of `main`. The GitHub deploy workflow stays skipped until the `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` secrets are added.
+- **Live sign-in not yet exercised end to end.** Google OAuth initiation reaches Google's consent screen in production, but no real Google or email sign-up, confirmation and onboarding has been completed by an automated test (that needs a real account and inbox). See [`docs/AUTH_SETUP.md`](docs/AUTH_SETUP.md).
+- **Dawn blocks Vercel's servers.** Dawn's four feeds return HTTP 403 from Vercel data centres (they work from residential connections). DAYBREAK does not work around publisher restrictions, so they are backed off automatically; Pakistan coverage comes from The Express Tribune, Geo News, Business Recorder and, with a key, GNews.
 - **AI summaries were not evaluated on live data**, because no API key was available. The grounding check only verifies numbers; it cannot prove every claim is faithful, so the UI always links to the original and labels AI text.
 - **The topic and region classifier is keyword-based.** It is transparent and fast but imperfect: wire stories in national feeds, and puns such as "Off Campus", can be misfiled. Topics are not reclassified with the LLM.
 - **English-only feeds.** The PDF fonts cover Latin script; other scripts are transliterated or dropped in print.
