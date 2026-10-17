@@ -18,9 +18,9 @@ export default async function EditionPage({ params }: PageProps<"/newspaper/[id]
   const { reader, prefs } = await requireReader(`/newspaper/${id}`);
   const edition = await reader.store.getEdition(reader.userId, id);
   if (!edition) notFound();
-  const [latest, bookmarks] = await Promise.all([reader.store.latestEdition(reader.userId), reader.store.listBookmarks(reader.userId)]);
+  const [latestId, bookmarks] = await Promise.all([reader.store.latestEditionId(reader.userId), reader.store.listBookmarks(reader.userId)]);
   const isToday = edition.editionDate === editionDateFor(prefs.timezone);
   return (
-    <PaperView edition={edition} savedIds={bookmarks.map((b) => b.articleId)} isToday={isToday} isLatest={latest?.id === edition.id} storageMode={storageMode()} />
+    <PaperView edition={edition} savedIds={bookmarks.map((b) => b.articleId)} isToday={isToday} isLatest={latestId === edition.id} storageMode={storageMode()} />
   );
 }

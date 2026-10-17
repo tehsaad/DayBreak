@@ -116,7 +116,8 @@ function rowToEdition(r: Row, stories: Row[]): Edition {
   };
 }
 
-const EDITION_SUMMARY_COLUMNS = "id,edition_date,revision,created_at,content_mode,edition_stories(position,article)";
+// Only the lead headline is needed for lists, so fetch each story's title, not its full snapshot.
+const EDITION_SUMMARY_COLUMNS = "id,edition_date,revision,created_at,content_mode,edition_stories(position,title:article->>title)";
 
 /**
  * Supabase implementation.
@@ -357,7 +358,7 @@ export class SupabaseStore implements Store {
         revision: r.revision as number,
         createdAt: r.created_at as string,
         contentMode: r.content_mode as EditionSummary["contentMode"],
-        leadTitle: ((stories[0]?.article as ArticleSnapshot | undefined)?.title as string) ?? "",
+        leadTitle: (stories[0]?.title as string | undefined) ?? "",
         storyCount: stories.length,
       };
     });
@@ -365,17 +366,25 @@ export class SupabaseStore implements Store {
 
   async getEdition(userId: string, editionId: string): Promise<Edition | null> {
     if (!/^[0-9a-f-]{36}$/i.test(editionId)) return null;
-    const e = check(await this.user.from("editions").select("*").eq("id", editionId).eq("user_id", userId).maybeSingle(), "edition get") as Row | null;
+    // One round trip: the edition with its stories embedded.
+    const e = check(await this.user.from("editions").select("*, edition_stories(*)").eq("id", editionId).eq("user_id", userId).maybeSingle(), "edition get") as Row | null;
     if (!e) return null;
-    const stories = check(await this.user.from("edition_stories").select("*").eq("edition_id", editionId).eq("user_id", userId), "edition stories") as Row[];
-    return rowToEdition(e, stories);
+    return rowToEdition(e, (e.edition_stories as Row[]) ?? []);
   }
 
   async latestEdition(userId: string, editionDate?: string): Promise<Edition | null> {
-    let q = this.user.from("editions").select("id").eq("user_id", userId);
+    let q = this.user.from("editions").select("*, edition_stories(*)").eq("user_id", userId);
     if (editionDate) q = q.eq("edition_date", editionDate);
     const data = check(await q.order("edition_date", { ascending: false }).order("revision", { ascending: false }).limit(1), "latest edition") as Row[];
-    return data[0] ? this.getEdition(userId, data[0].id as string) : null;
+    return data[0] ? rowToEdition(data[0], (data[0].edition_stories as Row[]) ?? []) : null;
+  }
+
+  async latestEditionId(userId: string): Promise<string | null> {
+    const data = check(
+      await this.user.from("editions").select("id").eq("user_id", userId).order("edition_date", { ascending: false }).order("revision", { ascending: false }).limit(1),
+      "latest edition id",
+    ) as Row[];
+    return (data[0]?.id as string) ?? null;
   }
 
   async insertEdition(edition: Edition): Promise<{ edition: Edition; created: boolean }> {

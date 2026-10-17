@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { storageMode, supabaseConfig } from "../env";
@@ -36,22 +37,28 @@ export async function supabaseForRequest() {
 
 /**
  * The current reader, or null if there is none yet.
- * - Supabase mode: the signed-in user (JWT verified by Supabase Auth).
+ * - Supabase mode: the signed-in user. `getClaims()` verifies the session JWT's signature
+ *   against the project's published signing keys (ES256) — locally, without an Auth-server
+ *   round trip — and refreshes the session first if it is about to expire. A user id supplied by
+ *   the browser is never trusted.
  * - Demo mode: an anonymous id stored in an httpOnly cookie; data stays on this server.
+ *
+ * Wrapped in React `cache()` so the header and the page share one lookup per request.
  */
-export async function getReader(): Promise<ReaderContext | null> {
+export const getReader = cache(async (): Promise<ReaderContext | null> => {
   if (storageMode() === "supabase") {
     const supabase = await supabaseForRequest();
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) return null;
+    const { data, error } = await supabase.auth.getClaims();
+    const claims = data?.claims;
+    if (error || !claims?.sub || claims.role !== "authenticated") return null;
     const { createReaderStore } = await import("../store/supabase-store");
-    return { mode: "supabase", userId: data.user.id, email: data.user.email ?? null, store: createReaderStore(supabase, getFileStore()) };
+    return { mode: "supabase", userId: claims.sub, email: typeof claims.email === "string" ? claims.email : null, store: createReaderStore(supabase, getFileStore()) };
   }
   const jar = await cookies();
   const id = jar.get(DEMO_COOKIE)?.value;
   if (!id || !UUID_RE.test(id)) return null;
   return { mode: "demo", userId: id, email: null, store: getFileStore() };
-}
+});
 
 /**
  * Like getReader, but in demo mode creates the anonymous reader if needed.

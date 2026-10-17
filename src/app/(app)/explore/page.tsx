@@ -7,6 +7,7 @@ import { findEarlierCoverage } from "@/lib/edition/evidence";
 import { planEdition, clusterArticles } from "@/lib/rank/plan";
 import { emptyLearnedProfile } from "@/lib/rank/learning";
 import { freshness } from "@/lib/rank/score";
+import { publicMemo } from "@/lib/public-cache";
 import { safeLinkUrl } from "@/lib/security/url";
 import { requireReader } from "@/lib/server/page-reader";
 import { TOPICS, TOPIC_IDS, isTopicId, topicLabel } from "@/lib/topics";
@@ -22,14 +23,17 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
   const sort = sp.sort === "covered" ? "covered" : "newest";
   const tz = prefs.timezone;
 
-  const [pool, editions, bookmarks] = await Promise.all([
-    reader.store.listArticles({ sinceHours: 36, limit: 1200 }),
-    reader.store.listEditions(reader.userId, 8),
+  // The shared news pool and its same-event clusters are public, so they're computed once per
+  // server instance every few minutes; everything per-reader below is computed per request.
+  const [{ livePool, clusterMap }, editions, bookmarks] = await Promise.all([
+    publicMemo("explore-pool", 5 * 60_000, async () => {
+      const live = (await reader.store.listArticles({ sinceHours: 36, limit: 1200 })).filter((a) => !a.sample);
+      return { livePool: live, clusterMap: clusterArticles(live) };
+    }),
+    reader.store.listEditions(reader.userId, 6),
     reader.store.listBookmarks(reader.userId),
   ]);
   const savedIds = new Set(bookmarks.map((b) => b.articleId));
-  const livePool = pool.filter((a) => !a.sample);
-  const clusterMap = clusterArticles(livePool);
 
   // Browse by topic: every topic (not only followed ones), newest or most widely covered first.
   const topicCounts = new Map<string, number>();
@@ -63,7 +67,7 @@ export default async function ExplorePage({ searchParams }: PageProps<"/explore"
   const bubble = bubblePlan.stories.slice(0, 6).map((s) => s.scored.article).sort((a, b) => freshness(b, new Date()) - freshness(a, new Date()));
 
   // Story threads: today's stories that continue coverage from your earlier editions.
-  const full = (await Promise.all(editions.slice(0, 8).map((e) => reader.store.getEdition(reader.userId, e.id)))).filter((e): e is Edition => Boolean(e));
+  const full = (await Promise.all(editions.slice(0, 6).map((e) => reader.store.getEdition(reader.userId, e.id)))).filter((e): e is Edition => Boolean(e));
   const latest = full[0];
   const history = full.filter((e) => latest && e.editionDate !== latest.editionDate);
   const threads = latest

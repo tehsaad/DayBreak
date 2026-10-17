@@ -26,8 +26,10 @@ export async function proxy(request: NextRequest) {
       },
     },
   });
-  const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
-  const signedIn = Boolean(data.user);
+  // getClaims verifies the JWT locally with the project's ES256 signing key (no Auth round trip)
+  // and refreshes an expiring session, writing the new cookies onto `response`.
+  const { data } = await supabase.auth.getClaims().catch(() => ({ data: null }));
+  const signedIn = Boolean(data?.claims?.sub);
   const { pathname, search } = request.nextUrl;
 
   const withCookies = (target: URL) => {

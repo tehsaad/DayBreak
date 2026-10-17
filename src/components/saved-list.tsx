@@ -5,7 +5,8 @@ import Link from "next/link";
 import { ArrowUpRight, Trash2 } from "lucide-react";
 import { api } from "@/lib/client-api";
 import { safeLinkUrl } from "@/lib/security/url";
-import { topicLabel } from "@/lib/topics";
+import { TOPICS, topicLabel } from "@/lib/topics";
+import { Thumb } from "./thumb";
 import type { Bookmark } from "@/lib/types";
 import { formatTime } from "./paper/format";
 
@@ -31,9 +32,14 @@ export function SavedList({ bookmarks, timeZone }: { bookmarks: Bookmark[]; time
         {items.map((b) => {
           const href = safeLinkUrl(b.article.url);
           return (
-            <li key={b.articleId} className="border-t border-rule py-5">
-              <p className="kicker">{topicLabel(b.article.topics[0] ?? "world")}</p>
-              <h2 className="headline mt-1 text-2xl">{b.article.title}</h2>
+            <li key={b.articleId} className="group border-t border-rule py-5">
+              <div className="flex gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="kicker">{topicLabel(b.article.topics[0] ?? "world")}</p>
+                  <h2 className="headline mt-1 text-2xl">{b.article.title}</h2>
+                </div>
+                <Thumb src={b.article.imageUrl} alt={b.article.title} size="thumb" label={TOPICS[b.article.topics[0] ?? "world"].short} />
+              </div>
               <p className="meta mt-1">
                 {b.article.publisher} · {formatTime(b.article.publishedAt, timeZone)} · saved {formatTime(b.savedAt, timeZone)}
               </p>

@@ -207,6 +207,10 @@ export class FileStore implements Store {
     });
   }
 
+  async latestEditionId(userId: string): Promise<string | null> {
+    return (await this.latestEdition(userId))?.id ?? null;
+  }
+
   insertEdition(edition: Edition): Promise<{ edition: Edition; created: boolean }> {
     return this.mutate((data) => {
       const existing = Object.values(data.editions).find(

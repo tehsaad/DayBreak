@@ -49,6 +49,16 @@ describe("parseFeed", () => {
     expect(feed.items[0]!.imageCandidates[0]!.url).toBe("https://img.example.com/chip.png");
   });
 
+  it("finds images embedded as XML elements (Tribune-style <image><img/></image>, raw HTML in descriptions)", () => {
+    const xml = `<rss><channel><item><title>Opposition unites against governor's rule</title><link>https://tribune.example.com/story/1</link>
+      <description><![CDATA[Short text]]></description><image><img src="https://i.tribune.example.com/a.png" class="featured_image"/></image></item>
+      <item><title>Colleges rethink completion</title><link>https://ihe.example.com/2</link>
+      <description><div class="f"><img loading="lazy" src="https://ihe.example.com/b.jpg" width="1200" height="800" alt="x"/></div>Body text</description></item></channel></rss>`;
+    const feed = parseFeed(xml);
+    expect(feed.items[0]!.imageCandidates.map((c) => c.url)).toContain("https://i.tribune.example.com/a.png");
+    expect(feed.items[1]!.imageCandidates).toContainEqual({ url: "https://ihe.example.com/b.jpg", width: 1200 });
+  });
+
   it("rejects documents that are not feeds", () => {
     expect(() => parseFeed("<html><body>hi</body></html>")).toThrow(FeedParseError);
   });

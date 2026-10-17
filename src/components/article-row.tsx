@@ -4,11 +4,12 @@ import { useState, useTransition } from "react";
 import { ArrowUpRight, Bookmark, BookmarkCheck, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { api, ApiError } from "@/lib/client-api";
 import { safeLinkUrl } from "@/lib/security/url";
-import { topicLabel } from "@/lib/topics";
+import { TOPICS, topicLabel } from "@/lib/topics";
 import type { Article } from "@/lib/types";
 import { formatTime } from "./paper/format";
+import { Thumb } from "./thumb";
 
-export type RowArticle = Pick<Article, "id" | "url" | "title" | "description" | "publisher" | "publishedAt" | "topics" | "sample">;
+export type RowArticle = Pick<Article, "id" | "url" | "title" | "description" | "publisher" | "publishedAt" | "topics" | "sample" | "imageUrl">;
 
 /**
  * A story from the shared article store (Explore, Search) with feedback controls. Each control
@@ -62,21 +63,26 @@ export function ArticleRow({ article, timeZone, saved: initiallySaved = false }:
 
   const btn = "inline-flex items-center gap-1 rounded px-1.5 py-1 text-muted hover:bg-paper-deep hover:text-ink disabled:opacity-50";
   return (
-    <li className="border-t border-rule py-3">
-      <p className="kicker">{topicLabel(article.topics[0] ?? "world")}</p>
-      {href ? (
-        <a href={href} target="_blank" rel="noopener noreferrer" className="headline mt-1 inline-flex items-start gap-1 text-lg hover:text-accent">
-          {article.title} <ArrowUpRight size={14} className="mt-1.5 shrink-0" aria-hidden />
-          <span className="sr-only">(opens {article.publisher} in a new tab)</span>
-        </a>
-      ) : (
-        <p className="headline mt-1 text-lg">{article.title}</p>
-      )}
-      <p className="meta mt-1">
-        {article.publisher} · {formatTime(article.publishedAt, timeZone)}
-        {article.sample ? " · Sample" : ""}
-      </p>
-      {article.description ? <p className="mt-1 line-clamp-2 text-sm text-ink-soft">{article.description}</p> : null}
+    <li className="group border-t border-rule py-3">
+      <div className="flex gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="kicker">{topicLabel(article.topics[0] ?? "world")}</p>
+          {href ? (
+            <a href={href} target="_blank" rel="noopener noreferrer" className="headline mt-1 inline-flex items-start gap-1 text-lg group-hover:text-accent">
+              {article.title} <ArrowUpRight size={14} className="mt-1.5 shrink-0" aria-hidden />
+              <span className="sr-only">(opens {article.publisher} in a new tab)</span>
+            </a>
+          ) : (
+            <p className="headline mt-1 text-lg">{article.title}</p>
+          )}
+          <p className="meta mt-1">
+            {article.publisher} · {formatTime(article.publishedAt, timeZone)}
+            {article.sample ? " · Sample" : ""}
+          </p>
+          {article.description ? <p className="mt-1 line-clamp-2 text-sm text-ink-soft">{article.description}</p> : null}
+        </div>
+        <Thumb src={article.imageUrl} alt={article.title} size="thumb" label={TOPICS[article.topics[0] ?? "world"].short} className="mt-1" />
+      </div>
       <div className="-ml-1.5 mt-1.5 flex flex-wrap items-center gap-0.5 font-sans text-xs">
         <button type="button" className={btn} onClick={toggleSave} aria-pressed={saved} disabled={pending}>
           {saved ? <BookmarkCheck size={14} className="text-forest" aria-hidden /> : <Bookmark size={14} aria-hidden />} {saved ? "Saved" : "Save"}

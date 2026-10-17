@@ -91,6 +91,26 @@ function collectImages(node: Node, html: string): { url: string; width: number }
   }
   const img = html.match(/<img[^>]+src=["']([^"']+)["']/i);
   if (img?.[1]) out.push({ url: img[1].replace(/&amp;/g, "&").replace(/&#0?38;/g, "&"), width: 0 });
+  // Some feeds embed <img> as real XML elements rather than escaped HTML — e.g. The Express
+  // Tribune's <image><img src=…/></image> and Inside Higher Ed's markup inside <description>.
+  for (const found of findImgElements(node, 0)) out.push(found);
+  return out;
+}
+
+function findImgElements(value: unknown, depth: number): { url: string; width: number }[] {
+  if (depth > 6 || value == null || typeof value !== "object") return [];
+  if (Array.isArray(value)) return value.flatMap((v) => findImgElements(v, depth + 1));
+  const out: { url: string; width: number }[] = [];
+  for (const [key, child] of Object.entries(value as Node)) {
+    if (key === "img") {
+      for (const im of arr(child)) {
+        const url = attr(im, "src");
+        if (url) out.push({ url, width: Number(attr(im, "width")) || 0 });
+      }
+    } else if (!key.startsWith("@_") && key !== "#text") {
+      out.push(...findImgElements(child, depth + 1));
+    }
+  }
   return out;
 }
 

@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { api } from "@/lib/client-api";
-import { safeImageUrl, safeLinkUrl } from "@/lib/security/url";
-import { topicLabel } from "@/lib/topics";
+import { safeLinkUrl } from "@/lib/security/url";
+import { TOPICS, topicLabel } from "@/lib/topics";
+import { Thumb } from "../thumb";
 import type { EditionStory } from "@/lib/types";
 import { BiggerPicturePanel } from "./bigger-picture";
 import { formatTime } from "./format";
@@ -77,19 +78,17 @@ function SummaryLabel({ story }: { story: EditionStory }) {
   );
 }
 
-function StoryImage({ story, className }: { story: EditionStory; className: string }) {
-  const [failed, setFailed] = useState(false);
-  const src = safeImageUrl(story.article.imageUrl);
-  if (!src || failed) return null;
+/** Lead image: large, loaded eagerly (it is the page's main image), with publisher credit. */
+function LeadImage({ story }: { story: EditionStory }) {
   return (
     <figure className="mb-3">
-      {/* Publisher images come from arbitrary feed domains; rendered directly, never proxied. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} className={`w-full bg-paper-deep object-cover ${className}`} />
-      <figcaption className="meta mt-1">Image: {story.article.publisher}</figcaption>
+      <Thumb src={story.article.imageUrl} alt={story.article.title} size="lead" priority label={TOPICS[story.article.topics[0] ?? "world"].short} className="max-h-[460px]" />
+      {story.article.imageUrl ? <figcaption className="meta mt-1">Image: {story.article.publisher}</figcaption> : null}
     </figure>
   );
 }
+
+const thumbLabel = (story: EditionStory) => TOPICS[story.article.topics[0] ?? "world"].short;
 
 function useHidden() {
   return useState<HiddenState>(null);
@@ -107,7 +106,7 @@ export function LeadStory(props: StoryProps) {
       </h2>
       <StoryMeta story={story} timeZone={timeZone} />
       <div className="mt-4">
-        <StoryImage story={story} className="aspect-[16/9] max-h-[460px]" />
+        <LeadImage story={story} />
       </div>
       <p className="text-lg leading-relaxed text-ink-soft sm:text-xl">
         <SummaryLabel story={story} />
@@ -129,9 +128,14 @@ export function SideStory(props: StoryProps) {
   const [hidden, setHidden] = useHidden();
   if (hidden) return <HiddenNotice state={hidden} articleId={story.article.id} onUndo={() => setHidden(null)} />;
   return (
-    <article id={`story-${story.article.id}`} className="scroll-mt-24 border-b border-rule pb-5 last:border-0" aria-labelledby={`h-${story.article.id}`}>
-      <p className="kicker">{topicLabel(story.article.topics[0] ?? "world")}</p>
-      <h3 id={`h-${story.article.id}`} className="headline mt-1.5 text-2xl">{story.article.title}</h3>
+    <article id={`story-${story.article.id}`} className="group scroll-mt-24 border-b border-rule pb-5 last:border-0" aria-labelledby={`h-${story.article.id}`}>
+      <div className="flex gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="kicker">{topicLabel(story.article.topics[0] ?? "world")}</p>
+          <h3 id={`h-${story.article.id}`} className="headline mt-1.5 text-[1.35rem]">{story.article.title}</h3>
+        </div>
+        <Thumb src={story.article.imageUrl} alt={story.article.title} size="thumb" label={thumbLabel(story)} className="mt-1" />
+      </div>
       <StoryMeta story={story} timeZone={timeZone} />
       <p className="mt-2 leading-relaxed text-ink-soft">
         <SummaryLabel story={story} />
@@ -151,10 +155,14 @@ export function StandardStory(props: StoryProps) {
   const [hidden, setHidden] = useHidden();
   if (hidden) return <HiddenNotice state={hidden} articleId={story.article.id} onUndo={() => setHidden(null)} />;
   return (
-    <article id={`story-${story.article.id}`} className="scroll-mt-24 border-t border-rule pt-4" aria-labelledby={`h-${story.article.id}`}>
-      <StoryImage story={story} className="aspect-[3/2]" />
-      <p className="kicker">{topicLabel(story.article.topics[0] ?? "world")}</p>
-      <h3 id={`h-${story.article.id}`} className="headline mt-1.5 text-[1.45rem]">{story.article.title}</h3>
+    <article id={`story-${story.article.id}`} className="group scroll-mt-24 border-t border-rule pt-4" aria-labelledby={`h-${story.article.id}`}>
+      <div className="flex gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="kicker">{topicLabel(story.article.topics[0] ?? "world")}</p>
+          <h3 id={`h-${story.article.id}`} className="headline mt-1.5 text-[1.3rem]">{story.article.title}</h3>
+        </div>
+        <Thumb src={story.article.imageUrl} alt={story.article.title} size="thumb" label={thumbLabel(story)} className="mt-1" />
+      </div>
       <StoryMeta story={story} timeZone={timeZone} />
       <p className="mt-2 leading-relaxed text-ink-soft">
         <SummaryLabel story={story} />
@@ -173,9 +181,14 @@ export function BriefStory(props: StoryProps) {
   const [hidden, setHidden] = useHidden();
   if (hidden) return <HiddenNotice state={hidden} articleId={story.article.id} onUndo={() => setHidden(null)} />;
   return (
-    <article id={`story-${story.article.id}`} className="scroll-mt-24 border-t border-rule py-3" aria-labelledby={`h-${story.article.id}`}>
-      <h3 id={`h-${story.article.id}`} className="headline text-lg">{story.article.title}</h3>
-      <StoryMeta story={story} timeZone={timeZone} />
+    <article id={`story-${story.article.id}`} className="group scroll-mt-24 border-t border-rule py-3" aria-labelledby={`h-${story.article.id}`}>
+      <div className="flex gap-3">
+        <Thumb src={story.article.imageUrl} alt={story.article.title} size="small" label={thumbLabel(story)} className="mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <h3 id={`h-${story.article.id}`} className="headline text-lg">{story.article.title}</h3>
+          <StoryMeta story={story} timeZone={timeZone} />
+        </div>
+      </div>
       {story.summary ? <p className="mt-1 line-clamp-3 text-[0.95rem] leading-relaxed text-ink-soft">{story.summary}</p> : null}
       <SourceLink editionId={editionId} story={story} className="mt-1.5" />
       <StoryActions editionId={editionId} story={story} saved={props.saved} onSavedChange={(v) => props.onSavedChange(story.article.id, v)} onHide={setHidden} compact />

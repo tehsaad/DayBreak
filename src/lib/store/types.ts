@@ -65,6 +65,8 @@ export interface Store {
   listEditions(userId: string, limit?: number): Promise<EditionSummary[]>;
   getEdition(userId: string, editionId: string): Promise<Edition | null>;
   latestEdition(userId: string, editionDate?: string): Promise<Edition | null>;
+  /** Id of the reader's newest edition, without loading it. */
+  latestEditionId(userId: string): Promise<string | null>;
   /** Insert unless (userId, editionDate, revision) already exists; returns the stored edition. */
   insertEdition(edition: Edition): Promise<{ edition: Edition; created: boolean }>;
   saveBiggerPicture(userId: string, editionId: string, position: number, bp: BiggerPicture): Promise<void>;
