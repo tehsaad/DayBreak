@@ -69,6 +69,37 @@ function StoryCard({ a, delay, big = false }: { a: Article; delay: number; big?:
   );
 }
 
+/**
+ * The preview's second column, laid out like a broadsheet's secondary column: one story with
+ * its photo across the full column width and the headline beneath it, then text-only briefs
+ * separated by rules.
+ */
+function SideColumn({ stories }: { stories: Article[] }) {
+  return (
+    <div className="md:border-l md:border-rule md:pl-5">
+      {stories.map((a, i) => {
+        const href = safeLinkUrl(a.url);
+        const headline = href ? (
+          <a href={href} target="_blank" rel="noopener noreferrer" className="link-rule">
+            {a.title}
+            <span className="sr-only"> (opens {a.publisher} in a new tab)</span>
+          </a>
+        ) : (
+          a.title
+        );
+        return (
+          <article key={a.id} className={`group animate-fade-up ${i ? "mt-4 border-t border-rule pt-4" : ""}`} style={{ animationDelay: `${250 + i * 90}ms` }}>
+            {i === 0 ? <Thumb src={a.imageUrl} alt={a.title} size="feature" label={TOPICS[a.topics[0] ?? "world"].short} className="mb-3" /> : null}
+            <p className="kicker">{topicLabel(a.topics[0] ?? "world")}</p>
+            <h3 className={`headline mt-1 ${i === 0 ? "text-[1.3rem]" : "text-[1.05rem]"}`}>{headline}</h3>
+            <p className="meta mt-1">{a.publisher} · {formatTime(a.publishedAt, "UTC")}{a.sample ? " · Sample" : ""}</p>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 async function FrontPage() {
   const data = await landingData();
   if (newsMode() === "live") {
@@ -88,11 +119,7 @@ async function FrontPage() {
       </div>
       <div className="mt-4 grid gap-5 md:grid-cols-2">
         <StoryCard a={lead} delay={150} big />
-        <div className="space-y-4 md:border-l md:border-rule md:pl-5">
-          {rest.slice(0, 4).map((a, i) => (
-            <StoryCard key={a.id} a={a} delay={250 + i * 90} />
-          ))}
-        </div>
+        <SideColumn stories={rest.slice(0, 4)} />
       </div>
       <figcaption className="mt-4 border-t border-rule pt-2 font-sans text-xs text-muted">
         {data.isSample ? "Shown while today's reporting is collected. Your paper uses live feeds." : `Real stories from DAYBREAK's sources. Your own paper is ranked for you.`}
