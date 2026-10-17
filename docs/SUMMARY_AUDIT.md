@@ -71,7 +71,23 @@ struggled with messy inputs: truncated, bullet-style and non-English excerpts. C
 - Non-Latin-script and fragment sources are skipped (`summarisableText`).
 - Meta answers ("no summary…") are rejected.
 
-Round 3 is to be run on `sum-v3` output after deployment.
+## Round 3: 17 Oct 2026, prompt `sum-v3`, `openai/gpt-oss-120b`
+
+Sample: 20 of the 23 summaries written after the `sum-v3` deploy (hash order). Same method and
+auditor.
+
+| Result | Count |
+|---|---:|
+| Fully supported | 17 / 20 (**85%**, target 95%: **not met**) |
+| Misspelled name ("Zverkov" for Zverev) | 1 |
+| Overstated ("set to bring in" reported as announced) | 1 |
+| Claim credited to "sources" stated as fact | 1 |
+
+Trend: 88% → 78% → 85%. The `sum-v3` rules removed misattribution, invented endings, junk
+answers and over-hedging. A new `inventsName` check now rejects summaries naming people or
+places missing from the source (tested on the Zverkov case). Tense and hedging subtleties
+remain prompt-dependent. The 95% target is still unmet on the evidence so far, and needs a
+fourth audit round on new output.
 
 Re-run: query 25 rows of `article_summaries ⋈ articles` ordered by `md5(article_id)` for the
 current model, and compare each summary with its source.

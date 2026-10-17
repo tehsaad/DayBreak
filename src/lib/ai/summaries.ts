@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { generateText, Output, type LanguageModel } from "ai";
 import { z } from "zod";
+import { specificEntities } from "../edition/evidence";
 import { rightsFor } from "../news/rights";
 import type { CachedSummary, Store } from "../store/types";
 import { cleanText, truncateText } from "../text";
@@ -45,6 +46,15 @@ const ATTRIBUTION = /\b(reportedly|allegedly|alleged|purportedly|according to|sa
 /** True when the source hedges a claim ("reportedly") but the summary states it as plain fact. */
 export function dropsHedge(summary: string, source: string): boolean {
   return HEDGES.test(source) && !ATTRIBUTION.test(summary);
+}
+
+/**
+ * True when the summary names someone or something the source doesn't (e.g. "Zverkov" for
+ * "Zverev"): every specific name in the summary must appear in the source text.
+ */
+export function inventsName(summary: string, source: string): boolean {
+  const src = source.toLowerCase();
+  return specificEntities(summary).some((name) => !name.toLowerCase().split(/\s+/).every((w) => src.includes(w)));
 }
 
 /** Only sources whose rules allow AI processing, with enough text to summarise. */
@@ -109,7 +119,7 @@ export async function summariseArticles(
         const a = ids.get(it.id);
         const summary = truncateText(cleanText(it.summary), SUMMARY_MAX_CHARS);
         const source = `${a?.title ?? ""} ${a?.description ?? ""}`;
-        if (!a || summary.length < 30 || !numbersGrounded(summary, source) || copiesSource(summary, source) || dropsHedge(summary, source) || META.test(summary)) {
+        if (!a || summary.length < 30 || !numbersGrounded(summary, source) || copiesSource(summary, source) || dropsHedge(summary, source) || META.test(summary) || inventsName(summary, source)) {
           run.rejected++;
           continue;
         }

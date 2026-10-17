@@ -139,6 +139,15 @@ describe("summary input and output filters (real cases, 17 Oct)", () => {
   });
 });
 
+describe("name grounding (round-3 audit case)", () => {
+  it("rejects a misspelled or invented name, accepts names that are in the source", async () => {
+    const { inventsName } = await import("@/lib/ai/summaries");
+    const src = 'Fatigued Zverev \'overachieved\' by reaching Shanghai semis. Alexander Zverev says he "overachieved" at the Shanghai Masters.';
+    expect(inventsName("Alexander Zverkov says he overachieved by reaching the Shanghai Masters semi-finals.", src)).toBe(true);
+    expect(inventsName("Alexander Zverev says he overachieved by reaching the Shanghai Masters semi-finals.", src)).toBe(false);
+  });
+});
+
 describe("feed error messages", () => {
   it("explain what went wrong and what to do", () => {
     expect(describeFeedError("HTTP 403")).toMatch(/^Blocked by the publisher \(HTTP 403\)/);
