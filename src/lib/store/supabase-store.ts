@@ -190,13 +190,17 @@ export class SupabaseStore implements Store {
       const existing = check(await this.svc.from("articles").select("id").in("id", chunk.map((a) => a.id)), "article lookup") as Row[];
       const known = new Set(existing.map((r) => r.id as string));
       inserted += chunk.filter((a) => !known.has(a.id)).length;
-      // Keep the first collected_at for existing rows by excluding it from updates of known ids.
-      const rows = chunk.map((a) => {
+      // New rows carry collected_at; known rows keep their first collected_at by omitting it.
+      // They must be sent separately: PostgREST builds one column list from the union of all
+      // rows in a request, so mixing them would write NULL into known rows' collected_at.
+      const fresh = chunk.filter((a) => !known.has(a.id)).map(articleToRow);
+      const updates = chunk.filter((a) => known.has(a.id)).map((a) => {
         const row = articleToRow(a);
-        if (known.has(a.id)) delete row.collected_at;
+        delete row.collected_at;
         return row;
       });
-      check(await this.svc.from("articles").upsert(rows, { onConflict: "id" }), "article upsert");
+      if (fresh.length) check(await this.svc.from("articles").upsert(fresh, { onConflict: "id" }), "article upsert");
+      if (updates.length) check(await this.svc.from("articles").upsert(updates, { onConflict: "id" }), "article update");
     }
     return inserted;
   }
