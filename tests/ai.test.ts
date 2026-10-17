@@ -121,4 +121,14 @@ describe("LLM editorial pass", () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.LLM_PROVIDER;
   });
+
+  it("uses the AI Gateway through Vercel OIDC without an API key only when asked to and on Vercel", () => {
+    process.env.LLM_PROVIDER = "gateway";
+    expect(llmConfig()).toBeNull(); // not on Vercel, no key, no OIDC token
+    process.env.VERCEL = "1";
+    expect(llmConfig()).toMatchObject({ provider: "gateway", model: "anthropic/claude-haiku-5.5" });
+    delete process.env.LLM_PROVIDER;
+    expect(llmConfig()).toBeNull(); // OIDC alone never silently enables AI
+    delete process.env.VERCEL;
+  });
 });

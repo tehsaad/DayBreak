@@ -133,7 +133,7 @@ Copy [`.env.example`](.env.example) to `.env.local` locally, or set these variab
 | `SUPABASE_SERVICE_ROLE_KEY` | for accounts | **Server-only.** Used for shared news data and cron. `SUPABASE_SECRET_KEY` is accepted instead. Never give it a `NEXT_PUBLIC_` prefix: those values are inlined into browser bundles, and the deploy gate refuses any `NEXT_PUBLIC_…SERVICE_ROLE/SECRET/API_KEY/TOKEN` variable |
 | `LLM_PROVIDER` | optional | `anthropic`, `openai`, `google`, `gateway` or `none`. Unset: the first provider whose key is present |
 | `LLM_MODEL` | optional | Model id. Defaults: `claude-haiku-5-5` (Anthropic), `anthropic/claude-haiku-5.5` (AI Gateway). Set it explicitly for OpenAI or Google |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `AI_GATEWAY_API_KEY` | optional | Provider key. On Vercel the AI Gateway can also authenticate through OIDC |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `AI_GATEWAY_API_KEY` | optional | Provider key. On Vercel, `LLM_PROVIDER=gateway` needs **no key**: the AI Gateway authenticates with the deployment's OIDC token. Locally, use `vercel env pull` to get `VERCEL_OIDC_TOKEN` |
 | `LLM_TIMEOUT_MS`, `LLM_MAX_OUTPUT_TOKENS` | optional | Defaults 30000 and 4000 |
 | `CRON_SECRET` | for cron | Random string. Vercel sends it as `Authorization: Bearer …`. Cron routes refuse to run without it |
 | `CRON_USE_AI` | optional | `false` to prepare scheduled editions without LLM calls |
@@ -217,7 +217,7 @@ The deploy workflow runs these steps in order:
 4. Smoke-test the candidate's `/api/health` with [`scripts/ci/check-health.mjs`](scripts/ci/check-health.mjs). It must report `storage: supabase`, `news: live`, a configured AI provider and `CRON_SECRET`.
 5. `vercel promote` the candidate. Optionally, the public domain's health is then re-checked.
 
-If the Vercel secrets are not configured, the workflow stops at the first step with a notice and deploys nothing. The Vercel secrets are scoped to the individual CLI steps, so `npm ci` and dependency install scripts never see the token. If any later step fails, the production domain keeps serving the previous deployment.
+Steps 1 and the credentials check run in a separate **Preflight** job with no environment. Only when it passes does the **Deploy** job start, open the `production` environment and create a GitHub deployment record. If the Vercel secrets are not configured, Preflight ends with a notice; nothing is deployed and no deployment is recorded. The Vercel secrets are scoped to the individual CLI steps, so `npm ci` and dependency install scripts never see the token. If any later step fails, the production domain keeps serving the previous deployment.
 
 ### One-time setup
 

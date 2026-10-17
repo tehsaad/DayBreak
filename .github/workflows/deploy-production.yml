@@ -9,8 +9,10 @@
 # production candidate WITHOUT assigning the domain → smoke-test /api/health on the candidate
 # → promote the candidate to the production domain.
 #
-# Until VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID are configured as repository secrets
-# this workflow exits early with a notice and deploys nothing.
+# A preflight job (no environment) checks credentials and CI first. The deploy job — the only one
+# that opens the `production` environment and creates a GitHub deployment record — runs only
+# when preflight passes. Until VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID are configured
+# as repository secrets, preflight ends with a notice and nothing is deployed or recorded.
 name: Deploy production
 
 on:
@@ -34,8 +36,8 @@ env:
   NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
-  deploy:
-    name: Deploy to Vercel production
+  preflight:
+    name: Preflight
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_run' &&
@@ -43,16 +45,17 @@ jobs:
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment:
-      name: production
-      url: ${{ steps.promote.outputs.url }}
-    # Secrets are scoped to the individual steps that call the Vercel CLI, so dependency
-    # install scripts (npm ci) never see VERCEL_TOKEN.
-    env:
-      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
-      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.creds.outputs.ready }}
+      sha: ${{ steps.sha.outputs.sha }}
     steps:
+      - name: Resolve commit
+        id: sha
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: echo "sha=$DEPLOY_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Check deployment credentials
         id: creds
         env:
@@ -72,6 +75,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          DEPLOY_SHA: ${{ steps.sha.outputs.sha }}
         run: |
           for check in "Typecheck, lint & unit tests" "Build & end-to-end"; do
             conclusion=$(gh api "repos/$REPO/commits/$DEPLOY_SHA/check-runs?per_page=100" \
@@ -83,26 +87,37 @@ jobs:
             fi
           done
 
+  deploy:
+    name: Deploy to Vercel production
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ steps.promote.outputs.url }}
+    # Secrets are scoped to the individual steps that call the Vercel CLI, so dependency
+    # install scripts (npm ci) never see VERCEL_TOKEN.
+    env:
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+      DEPLOY_SHA: ${{ needs.preflight.outputs.sha }}
+    steps:
       - name: Check out
-        if: steps.creds.outputs.ready == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.DEPLOY_SHA }}
           persist-credentials: false
 
       - name: Set up Node.js
-        if: steps.creds.outputs.ready == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: Install dependencies
-        if: steps.creds.outputs.ready == 'true'
         run: npm ci
 
       - name: Verify production environment variables (names only)
-        if: steps.creds.outputs.ready == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -110,7 +125,6 @@ jobs:
         run: npx --yes "$VERCEL_CLI" env ls production --token "$VERCEL_TOKEN" | node scripts/ci/check-vercel-env.mjs
 
       - name: Pull Vercel project settings
-        if: steps.creds.outputs.ready == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -118,7 +132,6 @@ jobs:
         run: npx --yes "$VERCEL_CLI" pull --yes --environment=production --token "$VERCEL_TOKEN"
 
       - name: Build
-        if: steps.creds.outputs.ready == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -126,7 +139,6 @@ jobs:
         run: npx --yes "$VERCEL_CLI" build --prod --token "$VERCEL_TOKEN"
 
       - name: Deploy production candidate (domain not yet assigned)
-        if: steps.creds.outputs.ready == 'true'
         id: candidate
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -138,7 +150,6 @@ jobs:
           echo "Candidate: $url"
 
       - name: Smoke-test candidate
-        if: steps.creds.outputs.ready == 'true'
         env:
           CANDIDATE: ${{ steps.candidate.outputs.url }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -155,7 +166,6 @@ jobs:
           printf '%s' "$body" | node scripts/ci/check-health.mjs
 
       - name: Promote candidate to production
-        if: steps.creds.outputs.ready == 'true'
         id: promote
         env:
           CANDIDATE: ${{ steps.candidate.outputs.url }}
@@ -167,5 +177,5 @@ jobs:
           echo "url=${PRODUCTION_URL:-$CANDIDATE}" >> "$GITHUB_OUTPUT"
 
       - name: Verify production domain
-        if: steps.creds.outputs.ready == 'true' && env.PRODUCTION_URL != ''
+        if: env.PRODUCTION_URL != ''
         run: curl -fsS --retry 5 --retry-delay 5 --retry-all-errors "$PRODUCTION_URL/api/health" | node scripts/ci/check-health.mjs

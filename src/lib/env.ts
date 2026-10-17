@@ -33,15 +33,17 @@ export interface LlmConfig {
 
 /**
  * The configured LLM, or null when none is usable. With LLM_PROVIDER unset we pick the first
- * provider whose key is present. On Vercel the AI Gateway can authenticate through OIDC, so
- * VERCEL_OIDC_TOKEN also enables the gateway provider.
+ * provider whose key is present. The AI Gateway can also authenticate with Vercel OIDC: locally
+ * through VERCEL_OIDC_TOKEN (from `vercel env pull`), and on Vercel deployments through the
+ * per-request x-vercel-oidc-token header — so LLM_PROVIDER=gateway on Vercel needs no API key.
  */
 export function llmConfig(): LlmConfig | null {
   const requested = value("LLM_PROVIDER")?.toLowerCase();
   if (requested === "none" || requested === "off") return null;
   const candidates: LlmProvider[] = requested && requested in KEY_VARS ? [requested as LlmProvider] : ["anthropic", "openai", "google", "gateway"];
   for (const provider of candidates) {
-    const hasKey = Boolean(value(KEY_VARS[provider])) || (provider === "gateway" && Boolean(value("VERCEL_OIDC_TOKEN")));
+    const oidc = provider === "gateway" && (Boolean(value("VERCEL_OIDC_TOKEN")) || (requested === "gateway" && Boolean(value("VERCEL"))));
+    const hasKey = Boolean(value(KEY_VARS[provider])) || oidc;
     if (hasKey) {
       return {
         provider,
@@ -58,6 +60,7 @@ export function llmConfig(): LlmConfig | null {
 export function llmStatusNote(): string {
   const requested = value("LLM_PROVIDER")?.toLowerCase();
   if (requested === "none" || requested === "off") return "AI features are switched off (LLM_PROVIDER=none).";
+  if (requested === "gateway") return "LLM_PROVIDER is \"gateway\" but there is no AI_GATEWAY_API_KEY, and Vercel OIDC is only available on Vercel deployments or after `vercel env pull`.";
   if (requested && requested in KEY_VARS && !value(KEY_VARS[requested as LlmProvider])) {
     return `LLM_PROVIDER is "${requested}" but ${KEY_VARS[requested as LlmProvider]} is not set.`;
   }
