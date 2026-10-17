@@ -27,7 +27,7 @@ describe("SupabaseStore.upsertArticles", () => {
   it("never mixes new and existing rows in one request, and keeps existing collected_at", async () => {
     const { client, calls } = fakeService(["old1"]);
     const store = new SupabaseStore(client, client, {} as Store);
-    const inserted = await store.upsertArticles([makeArticle({ id: "old1" }), makeArticle({ id: "new1" }), makeArticle({ id: "new2" })]);
+    const inserted = await store.upsertArticles([makeArticle({ id: "old1", title: "Old story" }), makeArticle({ id: "new1", title: "New story one" }), makeArticle({ id: "new2", title: "New story two" })]);
     expect(inserted).toBe(2);
     const articleCalls = calls.filter((c) => c.table === "articles");
     expect(articleCalls).toHaveLength(2);
