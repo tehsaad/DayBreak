@@ -47,17 +47,18 @@ jobs:
     environment:
       name: production
       url: ${{ steps.promote.outputs.url }}
+    # Secrets are scoped to the individual steps that call the Vercel CLI, so dependency
+    # install scripts (npm ci) never see VERCEL_TOKEN.
     env:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      # Optional: lets the smoke test reach a candidate behind Vercel Deployment Protection.
-      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Check deployment credentials
         id: creds
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
             echo "::notice title=Production deploy skipped::VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID repository secrets are not configured. See README → Continuous deployment."
@@ -102,19 +103,35 @@ jobs:
 
       - name: Verify production environment variables (names only)
         if: steps.creds.outputs.ready == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: npx --yes "$VERCEL_CLI" env ls production --token "$VERCEL_TOKEN" | node scripts/ci/check-vercel-env.mjs
 
       - name: Pull Vercel project settings
         if: steps.creds.outputs.ready == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: npx --yes "$VERCEL_CLI" pull --yes --environment=production --token "$VERCEL_TOKEN"
 
       - name: Build
         if: steps.creds.outputs.ready == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: npx --yes "$VERCEL_CLI" build --prod --token "$VERCEL_TOKEN"
 
       - name: Deploy production candidate (domain not yet assigned)
         if: steps.creds.outputs.ready == 'true'
         id: candidate
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           url=$(npx --yes "$VERCEL_CLI" deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN")
           echo "url=$url" >> "$GITHUB_OUTPUT"
@@ -124,6 +141,11 @@ jobs:
         if: steps.creds.outputs.ready == 'true'
         env:
           CANDIDATE: ${{ steps.candidate.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          # Optional: lets the smoke test reach a candidate behind Vercel Deployment Protection.
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
             body=$(curl -fsS --retry 5 --retry-delay 5 --retry-all-errors -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" "$CANDIDATE/api/health")
@@ -137,6 +159,9 @@ jobs:
         id: promote
         env:
           CANDIDATE: ${{ steps.candidate.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           npx --yes "$VERCEL_CLI" promote "$CANDIDATE" --yes --token "$VERCEL_TOKEN"
           echo "url=${PRODUCTION_URL:-$CANDIDATE}" >> "$GITHUB_OUTPUT"

@@ -198,6 +198,7 @@ Editions are created through the `create_edition(edition, stories)` SQL function
 - **Least privilege:** `permissions: contents: read`, and `persist-credentials: false` on checkout.
 - **Pinned actions:** third-party actions are pinned to full commit SHAs; Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml)) proposes updates weekly.
 - **Failure behaviour:** every step runs a real project command, so any failing command fails the job.
+- **Generated route types:** `npm run typecheck` runs `next typegen` before `tsc`. Next.js generates `PageProps`/`RouteContext` types, which a fresh checkout doesn't have until something generates them.
 
 `npm run eval` is **not** part of CI, because its numbers depend on that day's live news. [`.github/workflows/evaluation.yml`](.github/workflows/evaluation.yml) runs it on demand and every Monday. It fetches the public feeds, needs no credentials, posts `docs/EVALUATION.md` to the job summary and uploads it as an artifact.
 
@@ -216,7 +217,7 @@ The deploy workflow runs these steps in order:
 4. Smoke-test the candidate's `/api/health` with [`scripts/ci/check-health.mjs`](scripts/ci/check-health.mjs). It must report `storage: supabase`, `news: live`, a configured AI provider and `CRON_SECRET`.
 5. `vercel promote` the candidate. Optionally, the public domain's health is then re-checked.
 
-If the Vercel secrets are not configured, the workflow stops at the first step with a notice and deploys nothing. If any later step fails, the production domain keeps serving the previous deployment.
+If the Vercel secrets are not configured, the workflow stops at the first step with a notice and deploys nothing. The Vercel secrets are scoped to the individual CLI steps, so `npm ci` and dependency install scripts never see the token. If any later step fails, the production domain keeps serving the previous deployment.
 
 ### One-time setup
 
@@ -246,7 +247,7 @@ If the Vercel secrets are not configured, the workflow stops at the first step w
 3. **Environments → New environment `production`:** restrict deployment branches to `main`. Optionally add required reviewers for a manual approval before each production deploy.
 4. **Branches → Add branch ruleset for `main`:**
    - require a pull request before merging
-   - require status checks **Typecheck, lint & unit tests** and **Build & end-to-end**, with branches up to date before merging
+   - require status checks **Typecheck, lint & unit tests** and **Build & end-to-end**, with branches up to date before merging. GitHub only lists these checks after they have run once, so add them after the first push.
    - block force pushes and deletions
 
 ### Manual deployment (fallback)
