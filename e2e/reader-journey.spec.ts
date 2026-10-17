@@ -11,7 +11,7 @@ test("reader journey: onboard, read, give feedback, regenerate, download PDF, op
   page.on("pageerror", (e) => consoleErrors.push(e.message));
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("news that matters to you");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Personalized news, without the noise");
   // The public homepage previews real (or clearly labelled sample) stories.
   await expect(page.locator("#preview figure")).toBeVisible();
   await page.getByRole("link", { name: /Get started/ }).first().click();

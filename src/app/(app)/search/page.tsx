@@ -48,8 +48,25 @@ function StoryLink({ story, timeZone }: { story: RecommendedStory; timeZone: str
 }
 
 function RecommendationsPanel({ recs, prefs, following, timeZone }: { recs: Recommendations; prefs: ReaderPreferences; following: { topic: TopicId; stories: Article[] } | null; timeZone: string }) {
+  const categories = (
+      <section aria-labelledby="rec-cats">
+        <h2 id="rec-cats" className="font-sans text-xs font-semibold uppercase tracking-[0.2em] text-muted">Popular categories</h2>
+        <ul className="mt-3 flex flex-wrap gap-2">
+          {POPULAR_CATEGORIES.map((t) => (
+            <li key={t}>
+              <Link href={`/search?topic=${t}`} className="chip">{TOPICS[t].label}</Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+  );
   if (recs.storyCount === 0) {
-    return <p className="font-sans text-sm text-muted">No articles are stored yet. Open your newspaper to fetch today&apos;s reporting, then come back.</p>;
+    return (
+      <div className="space-y-6">
+        {categories}
+        <p className="font-sans text-sm text-muted">No recent live stories are stored yet, so there are no recommendations. Open your newspaper to fetch today&apos;s reporting, then come back.</p>
+      </div>
+    );
   }
   return (
     <div className="space-y-10">
@@ -81,16 +98,7 @@ function RecommendationsPanel({ recs, prefs, following, timeZone }: { recs: Reco
         </section>
       ) : null}
 
-      <section aria-labelledby="rec-cats">
-        <h2 id="rec-cats" className="font-sans text-xs font-semibold uppercase tracking-[0.2em] text-muted">Popular categories</h2>
-        <ul className="mt-3 flex flex-wrap gap-2">
-          {POPULAR_CATEGORIES.map((t) => (
-            <li key={t}>
-              <Link href={`/search?topic=${t}`} className="chip">{TOPICS[t].label}</Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {categories}
 
       <div className="grid gap-x-10 gap-y-10 lg:grid-cols-2">
         <section aria-labelledby="rec-important">
