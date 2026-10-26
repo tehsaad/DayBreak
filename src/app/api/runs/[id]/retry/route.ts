@@ -24,6 +24,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/runs/[id]/retry
   if (!run) return apiError(404, "Run not found");
   if (!prefs?.onboardedAt) return apiError(409, "Complete onboarding first");
   if (run.status === "succeeded" || run.status === "running") return apiError(409, `A ${run.status} run cannot be retried`);
+  const email = run.deliver ? reader.email ?? (await reader.store.getReaderEmail(reader.userId).catch(() => null)) : null;
   try {
     const result = await runEditionWorkflow({
       store: reader.store,
@@ -33,7 +34,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/runs/[id]/retry
       resumeRunId: run.id,
       mode: "ensure",
       ai: aiHandle(),
-      deliver: run.deliver ? { email: reader.email, appUrl: appUrlFor(req), format: prefs.delivery.format } : null,
+      deliver: run.deliver ? { email, appUrl: appUrlFor(req), format: prefs.delivery.format } : null,
       log: (event, data) => log(event, { ...data, user: reader.userId.slice(0, 8) }),
     });
     return json({ run: result.run, editionId: result.edition?.id ?? null });
