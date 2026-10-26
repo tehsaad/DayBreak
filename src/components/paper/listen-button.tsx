@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Headphones, Pause, Play, Square } from "lucide-react";
 import type { Edition } from "@/lib/types";
 
@@ -9,14 +9,20 @@ import type { Edition } from "@/lib/types";
  * No audio is generated on a server, nothing is sent to a TTS provider and it costs nothing; the
  * voice is whatever English voice the reader's device provides. Hidden when unsupported.
  */
+const noopSubscribe = () => () => undefined;
+
 export function ListenButton({ edition }: { edition: Edition }) {
-  const [supported, setSupported] = useState(false);
+  // False on the server and during hydration, then the browser's real capability.
+  const supported = useSyncExternalStore(
+    noopSubscribe,
+    () => "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined",
+    () => false,
+  );
   const [state, setState] = useState<"idle" | "playing" | "paused">("idle");
   const [index, setIndex] = useState(0);
   const chunks = useRef<string[]>([]);
 
   useEffect(() => {
-    setSupported(typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined");
     return () => {
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     };
