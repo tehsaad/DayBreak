@@ -63,7 +63,6 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchReport> {
         report.due++;
         const email = await opts.store.getReaderEmail(userId);
         options = { store: opts.store, userId, prefs, trigger: "scheduled", idempotencyKey: `scheduled:${due.localDate}`, mode: "ensure", ai, refreshNews: false, scheduledFor: due.scheduledFor, deliver: { email, appUrl: opts.appUrl, format: prefs.delivery.format }, now, log: opts.log };
-        if (due.scheduledFor) report.delaysSeconds.push(Math.max(0, Math.round((at.getTime() - due.scheduledFor.getTime()) / 1000)));
       } else {
         const date = editionDateFor(prefs.timezone, at);
         if (await opts.store.latestEdition(userId, date)) {
@@ -73,6 +72,7 @@ export async function dispatch(opts: DispatchOptions): Promise<DispatchReport> {
         options = { store: opts.store, userId, prefs, trigger: "prepare", idempotencyKey: `prepare:${date}`, mode: "ensure", ai, refreshNews: false, now, log: opts.log };
       }
       const result = await run(options);
+      if (!result.reused && options.scheduledFor) report.delaysSeconds.push(Math.max(0, Math.round((at.getTime() - options.scheduledFor.getTime()) / 1000)));
       if (result.reused) report.alreadyDone++;
       else if (opts.mode === "deliver") report.deliveryRuns++;
       else report.prepared++;
