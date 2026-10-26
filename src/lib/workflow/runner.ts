@@ -50,7 +50,7 @@ export interface RunEditionResult {
 }
 
 /** USD per million tokens from LLM_PRICE_INPUT_PER_MTOK / LLM_PRICE_OUTPUT_PER_MTOK; null when unset. */
-export function estimateCostUsd(inputTokens: number | null, outputTokens: number | null, env: NodeJS.ProcessEnv = process.env): number | null {
+export function estimateCostUsd(inputTokens: number | null, outputTokens: number | null, env: Record<string, string | undefined> = process.env): number | null {
   const pin = Number(env.LLM_PRICE_INPUT_PER_MTOK);
   const pout = Number(env.LLM_PRICE_OUTPUT_PER_MTOK);
   if (!env.LLM_PRICE_INPUT_PER_MTOK || !env.LLM_PRICE_OUTPUT_PER_MTOK || !Number.isFinite(pin) || !Number.isFinite(pout)) return null;
@@ -131,6 +131,8 @@ export async function runEditionWorkflow(opts: RunEditionOptions): Promise<RunEd
     if (!persist) return;
     run.updatedAt = stamp();
     try {
+      // Never overwrite a cancellation the reader requested while this stage was running.
+      if (!run.cancelRequested && (await store.getWorkflowRun(userId, run.id).catch(() => null))?.cancelRequested) run.cancelRequested = true;
       await store.saveWorkflowRun(run);
     } catch (err) {
       if (err instanceof RunBusyError) throw err;
@@ -158,7 +160,7 @@ export async function runEditionWorkflow(opts: RunEditionOptions): Promise<RunEd
     async run<T>(name: StageName, fn: () => Promise<T>, describe?: (value: T) => StageOutcome, retry = NO_RETRY): Promise<T> {
       if (persist) {
         const latest = await store.getWorkflowRun(userId, run.id).catch(() => null);
-        if (latest?.cancelRequested) throw new RunCancelledError();
+        if (latest?.cancelRequested || run.cancelRequested) throw new RunCancelledError();
       }
       const rec = stage(name);
       const t0 = Date.now();
