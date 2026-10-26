@@ -324,6 +324,17 @@ export class FileStore implements Store {
     });
   }
 
+  requestCancel(userId: string, runId: string, now: string): Promise<WorkflowRun | null> {
+    return this.mutate((data) => {
+      const r = data.workflowRuns[runId];
+      if (!r || r.userId !== userId) return null;
+      if (r.status === "running") Object.assign(r, { cancelRequested: true, updatedAt: now });
+      else if (r.status === "failed" || r.status === "partial") Object.assign(r, { status: "cancelled", cancelRequested: true, updatedAt: now });
+      else return null;
+      return structuredClone(r);
+    });
+  }
+
   getWorkflowRun(userId: string, runId: string): Promise<WorkflowRun | null> {
     return this.read((data) => {
       const r = data.workflowRuns[runId];

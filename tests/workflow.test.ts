@@ -213,6 +213,21 @@ describe("edition workflow", () => {
     expect(err.run.stages.find((s: { name: string }) => s.name === "rank").status).toBe("skipped");
   });
 
+  it("cancel never overwrites a run that finished in the meantime", async () => {
+    const store = freshStore();
+    const { run } = await runEditionWorkflow({ store, userId: USER, prefs: PROFILES.aiResearcher, trigger: "manual", mode: "ensure", ai: null, now: fixed(NOW) });
+    // The reader's page still shows the run as running; the runner has since finished it.
+    expect(await store.requestCancel(USER, run.id, NOW.toISOString())).toBeNull();
+    expect((await store.getWorkflowRun(USER, run.id))?.status).toBe("succeeded");
+    // Another reader cannot cancel it at all.
+    expect(await store.requestCancel(OTHER, run.id, NOW.toISOString())).toBeNull();
+    // A failed run is cancelled outright; a running one only gets the flag.
+    await store.saveWorkflowRun({ ...run, status: "failed" });
+    expect((await store.requestCancel(USER, run.id, NOW.toISOString()))?.status).toBe("cancelled");
+    await store.saveWorkflowRun({ ...run, status: "running", cancelRequested: false });
+    expect(await store.requestCancel(USER, run.id, NOW.toISOString())).toMatchObject({ status: "running", cancelRequested: true });
+  });
+
   it("estimates cost only from configured prices", () => {
     expect(estimateCostUsd(1000, 500, {})).toBeNull();
     expect(estimateCostUsd(1_000_000, 1_000_000, { LLM_PRICE_INPUT_PER_MTOK: "0.15", LLM_PRICE_OUTPUT_PER_MTOK: "0.6" })).toBeCloseTo(0.75);

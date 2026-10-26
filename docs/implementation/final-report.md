@@ -88,7 +88,7 @@ It serves all four triggers: manual, overnight prepare, scheduled delivery, and 
 |---|---|
 | `npm run typecheck` | ✅ pass |
 | `npm run lint` | ✅ pass (0 problems) |
-| `vitest run` | ✅ **216 passed / 23 files.** Baseline was 177 / 20; 39 new tests. |
+| `vitest run` | ✅ **217 passed / 23 files.** Baseline was 177 / 20; 40 new tests. |
 | `next build` | ✅ pass |
 | RLS tests in PGlite (all migrations including #8) | ✅ Bob cannot read, create or update Alice's runs or deliveries; duplicate key rejected; second running run rejected |
 | PDF generation | ✅ Both templates rendered, rasterised and **inspected visually**. Two briefing bugs were found and fixed: the title overlapped the subtitle, and a section heading was orphaned at the foot of a page. |
@@ -112,6 +112,8 @@ It serves all four triggers: manual, overnight prepare, scheduled delivery, and 
 - Each stage costs an extra read and write to the run row (about 12 extra round trips per run).
 - The Activity page shows only the reader's own runs. There is no cross-user admin UI; operators use the SQL in `docs/operations.md`.
 - Embeddings and semantic retrieval were deliberately not built (ADR-003).
+- Cancel is a conditional update (it never overwrites a finished run). A cancel that arrives *while* a stage is being saved can still be lost; the run then simply completes.
+- If run tracking fails transiently while the tables exist, the delivery row's `run_id` foreign key rejects the insert and no email is sent. The next dispatch recovers it, and there is no duplicate.
 
 ## 8. Environment variables
 

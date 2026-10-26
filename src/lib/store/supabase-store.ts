@@ -640,6 +640,13 @@ export class SupabaseStore implements Store {
     check(res, "run save");
   }
 
+  async requestCancel(userId: string, runId: string, now: string): Promise<WorkflowRun | null> {
+    const running = check(await this.user.from("workflow_runs").update({ cancel_requested: true, updated_at: now }).eq("id", runId).eq("user_id", userId).eq("status", "running").select("*"), "run cancel") as Row[];
+    if (running[0]) return rowToRun(running[0]);
+    const ended = check(await this.user.from("workflow_runs").update({ status: "cancelled", cancel_requested: true, updated_at: now }).eq("id", runId).eq("user_id", userId).in("status", ["failed", "partial"]).select("*"), "run cancel") as Row[];
+    return ended[0] ? rowToRun(ended[0]) : null;
+  }
+
   async getWorkflowRun(userId: string, runId: string): Promise<WorkflowRun | null> {
     const data = check(await this.user.from("workflow_runs").select("*").eq("user_id", userId).eq("id", runId).maybeSingle(), "run get") as Row | null;
     return data ? rowToRun(data) : null;
