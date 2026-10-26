@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DeliverySettings } from "@/components/delivery-settings";
 import { LearnedInterests } from "@/components/learned-interests";
 import { SettingsForm } from "@/components/settings-form";
 import { formatTime } from "@/components/paper/format";
@@ -9,6 +10,9 @@ import { WEIGHTS } from "@/lib/rank/score";
 import { requireReader } from "@/lib/server/page-reader";
 import { getServiceStore } from "@/lib/store";
 import { regionName } from "@/lib/topics";
+import { emailTransport } from "@/lib/email/transport";
+import { editionDateFor } from "@/lib/preferences";
+import { nextDelivery } from "@/lib/workflow/schedule";
 
 export const metadata: Metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
@@ -23,11 +27,14 @@ const STATUS_STYLE: Record<string, string> = {
 
 export default async function SettingsPage() {
   const { reader, prefs } = await requireReader("/settings");
-  const [feedback, health, lastRun] = await Promise.all([
+  const [feedback, health, lastRun, email, todayRun] = await Promise.all([
     reader.store.listFeedback(reader.userId, 90),
     getServiceStore().getSourceHealth(),
     getServiceStore().lastIngestionRun(),
+    reader.email ? Promise.resolve(reader.email) : reader.store.getReaderEmail(reader.userId).catch(() => null),
+    reader.store.findWorkflowRun(reader.userId, `scheduled:${editionDateFor(prefs.timezone)}`).catch(() => null),
   ]);
+  const next = nextDelivery(prefs, new Date(), { todayDone: todayRun?.status === "succeeded" });
   const learned = computeLearnedProfile(feedback);
   const healthById = new Map(health.map((h) => [h.sourceId, h]));
   const llm = llmConfig();
@@ -37,10 +44,12 @@ export default async function SettingsPage() {
       <h1 className="font-display text-5xl font-extrabold tracking-tight">Settings</h1>
       <p className="mt-2 text-ink-soft">Your preferences, what DAYBREAK has learned about you, and where the news comes from.</p>
       <nav aria-label="Settings sections" className="mt-5 flex flex-wrap gap-2 font-sans text-xs">
-        {[["#sections", "Sections"], ["#interests", "What DAYBREAK has learned"], ["#ranking", "How ranking works"], ["#sources", "Sources"], ["#data", "Your data"]].map(([href, label]) => (
+        {[["#delivery", "Delivery"], ["#sections", "Sections"], ["#interests", "What DAYBREAK has learned"], ["#ranking", "How ranking works"], ["#sources", "Sources"], ["#data", "Your data"]].map(([href, label]) => (
           <a key={href} href={href} className="chip !py-1">{label}</a>
         ))}
       </nav>
+
+      <DeliverySettings initial={prefs.delivery} pdfTemplate={prefs.pdfTemplate} status={{ email, transport: emailTransport(), nextDelivery: next?.toISOString() ?? null, timezone: prefs.timezone }} />
 
       <SettingsForm initial={prefs} />
 

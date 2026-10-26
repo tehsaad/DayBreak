@@ -25,7 +25,10 @@ export async function PUT(req: Request) {
   const complete = body.data.complete !== false;
   let prefs;
   try {
-    prefs = normalizePreferences(body.data, previous, { complete });
+    // `partial: true` updates only the fields sent (e.g. the Delivery section), keeping the rest.
+    const { partial, ...fields } = body.data;
+    const raw = partial === true && previous ? { ...previous, ...fields } : fields;
+    prefs = normalizePreferences(raw, previous, { complete: partial === true ? false : complete });
   } catch (err) {
     return apiError(400, "Invalid preferences", { detail: err instanceof z.ZodError ? err.issues.slice(0, 5).map((i) => `${i.path.join(".")}: ${i.message}`) : undefined });
   }

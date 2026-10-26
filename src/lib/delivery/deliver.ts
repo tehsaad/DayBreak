@@ -81,7 +81,8 @@ export async function deliverEdition(opts: DeliverOptions): Promise<DeliverResul
   let attachments: EmailMessage["attachments"];
   if (opts.format !== "link") {
     try {
-      const render = opts.renderPdf ?? (async (e: Edition) => (await import("../pdf/edition-pdf")).renderEditionPdf(e));
+      const template = opts.edition.preferencesSnapshot.pdfTemplate ?? "editorial";
+      const render = opts.renderPdf ?? (async (e: Edition) => (await import("../pdf/edition-pdf")).renderEditionPdf(e, { template }));
       const pdf = await render(opts.edition);
       attachments = [{ filename: `daybreak-${opts.edition.editionDate}.pdf`, content: pdf.toString("base64") }];
     } catch (err) {

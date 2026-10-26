@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PaperView } from "@/components/paper/paper-view";
 import { GenerateButton } from "@/components/paper/generate-button";
+import { StatusStrip } from "@/components/paper/status-strip";
+import { nextDelivery } from "@/lib/workflow/schedule";
 import { formatEditionDate } from "@/components/paper/format";
 import { editionDateFor } from "@/lib/preferences";
 import { requireReader } from "@/lib/server/page-reader";
@@ -17,8 +19,15 @@ export default async function PaperPage({ searchParams }: PageProps<"/newspaper"
   const latest = await reader.store.latestEdition(reader.userId);
 
   if (latest && latest.editionDate === today && !sp.new) {
-    const saved = (await reader.store.listBookmarks(reader.userId)).map((b) => b.articleId);
-    return <PaperView edition={latest} savedIds={saved} isToday isLatest storageMode={storageMode()} />;
+    const [bookmarks, runs] = await Promise.all([reader.store.listBookmarks(reader.userId), reader.store.listWorkflowRuns(reader.userId, 5).catch(() => [])]);
+    const saved = bookmarks.map((b) => b.articleId);
+    const todayDone = runs.some((r) => r.idempotencyKey === `scheduled:${today}` && r.status === "succeeded");
+    return (
+      <>
+        <StatusStrip edition={latest} prefs={prefs} lastRun={runs[0] ?? null} next={nextDelivery(prefs, new Date(), { todayDone })} />
+        <PaperView edition={latest} savedIds={saved} isToday isLatest storageMode={storageMode()} />
+      </>
+    );
   }
 
   return (
