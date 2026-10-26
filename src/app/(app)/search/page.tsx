@@ -7,6 +7,7 @@ import { Thumb } from "@/components/thumb";
 import { log } from "@/lib/api";
 import { getRecommendations, POPULAR_CATEGORIES, type Recommendations, type RecommendedStory } from "@/lib/news/recommendations";
 import { safeLinkUrl } from "@/lib/security/url";
+import { searchWebNews, webSearchAvailable, type WebSearchResult } from "@/lib/news/web-search";
 import { requireReader } from "@/lib/server/page-reader";
 import { TOPICS, isTopicId, topicLabel, type TopicId } from "@/lib/topics";
 import type { Article, ReaderPreferences } from "@/lib/types";
@@ -130,6 +131,47 @@ function RecommendationsPanel({ recs, prefs, following, timeZone }: { recs: Reco
   );
 }
 
+/**
+ * "Search the web": live results from the GNews search API, clearly separated from DAYBREAK's own
+ * collected news. Opt-in per search (a link), because each search spends the shared free quota.
+ */
+function WebResults({ web, query, days, sort, topic, publisher, storedIds, savedIds, timeZone }: { web: WebSearchResult | null; query: string; days: number; sort: string; topic?: string; publisher?: string; storedIds: Set<string>; savedIds: Set<string>; timeZone: string }) {
+  if (!webSearchAvailable()) {
+    return <p className="mt-8 font-sans text-xs text-muted">Web search is off on this server (it needs a GNews API key). Results above come from news DAYBREAK has already collected.</p>;
+  }
+  if (!web) {
+    const href = `/search?${new URLSearchParams(Object.entries({ q: query, topic: topic ?? "", publisher: publisher ?? "", days: String(days), sort, web: "1" }).filter(([, v]) => v)).toString()}`;
+    return (
+      <div className="mt-8 border-t border-rule pt-5">
+        <p className="font-sans text-sm text-ink-soft">Results above come from news DAYBREAK has already collected from its sources.</p>
+        <Link href={href} className="btn btn-ghost mt-3">Also search the web for “{query}”</Link>
+        <p className="meta mt-2">Uses the GNews search API (live, limited daily allowance).</p>
+      </div>
+    );
+  }
+  const fresh = web.articles.filter((a) => !storedIds.has(a.id));
+  return (
+    <section aria-labelledby="web-h" className="mt-10 border-t-2 border-ink pt-5">
+      <h2 id="web-h" className="font-display text-2xl font-extrabold">From the wider web</h2>
+      <p className="meta mt-1">
+        Live results from GNews search for “{query}”, last {days} day{days === 1 ? "" : "s"}
+        {web.fetchedAt ? ` · fetched ${formatTime(web.fetchedAt, timeZone)}${web.cached ? " (cached)" : ""}` : ""}. Each links to the publisher&apos;s original article; save any to add it to your collection.
+      </p>
+      {web.status !== "ok" ? (
+        <p role="alert" className="mt-3 border border-warn bg-warn-soft px-3 py-2 font-sans text-sm text-warn">{web.message ?? "Web search is unavailable right now."}</p>
+      ) : fresh.length ? (
+        <ul className="mt-2 grid gap-x-8 md:grid-cols-2">
+          {fresh.map((a) => (
+            <ArticleRow key={a.id} article={a} timeZone={timeZone} saved={savedIds.has(a.id)} />
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 font-sans text-sm text-muted">{web.articles.length ? "Every web result is already in the results above." : "No web results for this search."}</p>
+      )}
+    </section>
+  );
+}
+
 export default async function SearchPage({ searchParams }: PageProps<"/search">) {
   const { reader, prefs } = await requireReader("/search");
   const sp = await searchParams;
@@ -140,11 +182,12 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
   const days = RANGES.find((r) => String(r.days) === str(sp.days))?.days ?? 14;
   const sort = str(sp.sort) === "oldest" ? "oldest" : "newest";
   const searching = Boolean(query || topic || publisher);
+  const wantWeb = str(sp.web) === "1" && query.length >= 2;
 
   const followTopic = prefs.sections[0] ?? null;
   // Independent reads run in parallel: public recommendations (cached), this reader's bookmarks,
   // and either the search itself or the reader's "because you follow" stories.
-  const [recs, bookmarks, found] = await Promise.all([
+  const [recs, bookmarks, found, web] = await Promise.all([
     getRecommendations(reader.store).catch((err) => {
       log("search_recommendations_failed", { error: (err as Error).message?.slice(0, 200) });
       return null;
@@ -159,7 +202,9 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
       log("search_failed", { error: (err as Error).message?.slice(0, 200) });
       return null;
     }),
+    wantWeb ? searchWebNews(reader.store, query, days) : Promise.resolve(null),
   ]);
+  if (web) log("web_search", { status: web.status, results: web.articles.length, cached: web.cached });
   const failed = found === null;
   const results = searching ? (found ?? []) : [];
   // Per-reader and computed per request — never cached or shared.
@@ -203,6 +248,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
                 <Link href="/search" className="mt-3 inline-block font-sans text-sm text-accent underline">Clear search</Link>
               </div>
             )}
+            {query ? <WebResults web={web} query={query} days={days} sort={sort} topic={topic} publisher={publisher} storedIds={new Set(results.map((a) => a.id))} savedIds={savedIds} timeZone={prefs.timezone} /> : null}
           </section>
         )}
       </SearchShell>
