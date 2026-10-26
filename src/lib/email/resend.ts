@@ -10,9 +10,11 @@ export interface EmailMessage {
   /** Resend de-duplicates requests with the same key for 24 hours. */
   idempotencyKey?: string;
   tags?: { name: string; value: string }[];
+  /** Base64 content (Resend `attachments[].content`). */
+  attachments?: { filename: string; content: string }[];
 }
 
-export type SendResult = { ok: true; id: string } | { ok: false; reason: "not_configured" | "rejected" | "network"; status?: number };
+export type SendResult = { ok: true; id: string } | { ok: false; reason: "not_configured" | "rejected" | "network"; status?: number; message?: string };
 
 export function resendConfig(): { apiKey: string; from: string } | null {
   const apiKey = process.env.RESEND_API_KEY?.trim();
@@ -32,10 +34,14 @@ export async function sendEmail(message: EmailMessage, fetchImpl: typeof fetch =
         "content-type": "application/json",
         ...(message.idempotencyKey ? { "idempotency-key": message.idempotencyKey } : {}),
       },
-      body: JSON.stringify({ from: cfg.from, to: [message.to], subject: message.subject, html: message.html, text: message.text, tags: message.tags }),
-      signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({ from: cfg.from, to: [message.to], subject: message.subject, html: message.html, text: message.text, tags: message.tags, ...(message.attachments?.length ? { attachments: message.attachments } : {}) }),
+      signal: AbortSignal.timeout(message.attachments?.length ? 20_000 : 8000),
     });
-    if (!res.ok) return { ok: false, reason: "rejected", status: res.status };
+    if (!res.ok) {
+      // Resend error bodies are { name, message }; keep only the message, never echo the request.
+      const detail = (await res.json().catch(() => ({}))) as { message?: string };
+      return { ok: false, reason: "rejected", status: res.status, message: detail.message?.slice(0, 200) };
+    }
     const data = (await res.json().catch(() => ({}))) as { id?: string };
     return { ok: true, id: data.id ?? "" };
   } catch {

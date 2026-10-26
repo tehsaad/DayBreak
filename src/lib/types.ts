@@ -24,8 +24,26 @@ export interface ReaderPreferences {
   readingMinutes: number;
   /** IANA time zone, used to decide which day an edition belongs to. */
   timezone: string;
+  /** Scheduled email delivery. Off by default; the paper is always available in the app. */
+  delivery: DeliveryPreferences;
+  /** Layout used for the PDF edition. */
+  pdfTemplate: PdfTemplate;
   onboardedAt: string | null;
   updatedAt: string | null;
+}
+
+export type DeliveryFrequency = "daily" | "weekdays" | "weekly";
+export type PdfTemplate = "editorial" | "briefing";
+
+export interface DeliveryPreferences {
+  enabled: boolean;
+  frequency: DeliveryFrequency;
+  /** 0 = Sunday … 6 = Saturday; used when frequency is "weekly". */
+  weekday: number;
+  /** Local delivery time, "HH:MM" (24-hour) in the reader's time zone. */
+  time: string;
+  /** Email a link to the edition, attach the PDF, or both. */
+  format: "link" | "pdf" | "both";
 }
 
 export interface Article {

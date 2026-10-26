@@ -3,7 +3,8 @@ import path from "node:path";
 import type { Article, BiggerPicture, Bookmark, Edition, EditionSummary, FeedbackEvent, IngestionRun, ReaderPreferences, SourceHealth } from "../types";
 import { hydratePreferences } from "../preferences";
 import type { TopicId } from "../topics";
-import type { ArticleQuery, CachedSummary, FeedbackDeleteFilter, Store } from "./types";
+import type { Delivery, WorkflowRun } from "../workflow/types";
+import { RunBusyError, type ArticleQuery, type CachedSummary, type FeedbackDeleteFilter, type Store } from "./types";
 
 /**
  * Demo-mode store: a single JSON file on the server's disk.
@@ -23,6 +24,8 @@ interface FileData {
   feedback: FeedbackEvent[];
   bookmarks: Bookmark[];
   affinities: Record<string, Partial<Record<TopicId, { weight: number; events: number }>>>;
+  workflowRuns: Record<string, WorkflowRun>;
+  deliveries: Record<string, Delivery>;
 }
 
 const EMPTY: FileData = {
@@ -36,11 +39,14 @@ const EMPTY: FileData = {
   feedback: [],
   bookmarks: [],
   affinities: {},
+  workflowRuns: {},
+  deliveries: {},
 };
 
 const ARTICLE_RETENTION_DAYS = 21;
 const MAX_ARTICLES = 6000;
 const MAX_FEEDBACK_PER_USER = 2000;
+const MAX_RUNS_PER_USER = 200;
 
 export class FileStore implements Store {
   readonly kind = "file" as const;
@@ -296,6 +302,77 @@ export class FileStore implements Store {
     return this.mutate((data) => {
       data.affinities[userId] = weights;
     });
+  }
+
+  createWorkflowRun(run: WorkflowRun): Promise<{ run: WorkflowRun; created: boolean }> {
+    return this.mutate((data) => {
+      const existing = Object.values(data.workflowRuns).find((r) => r.userId === run.userId && r.idempotencyKey === run.idempotencyKey);
+      if (existing) return { run: structuredClone(existing), created: false };
+      if (run.status === "running" && Object.values(data.workflowRuns).some((r) => r.userId === run.userId && r.status === "running")) throw new RunBusyError();
+      data.workflowRuns[run.id] = structuredClone(run);
+      // Retention: keep the newest runs per reader.
+      const mine = Object.values(data.workflowRuns).filter((r) => r.userId === run.userId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      for (const old of mine.slice(MAX_RUNS_PER_USER)) delete data.workflowRuns[old.id];
+      return { run: structuredClone(run), created: true };
+    });
+  }
+
+  saveWorkflowRun(run: WorkflowRun): Promise<void> {
+    return this.mutate((data) => {
+      if (run.status === "running" && Object.values(data.workflowRuns).some((r) => r.userId === run.userId && r.status === "running" && r.id !== run.id)) throw new RunBusyError();
+      data.workflowRuns[run.id] = structuredClone(run);
+    });
+  }
+
+  getWorkflowRun(userId: string, runId: string): Promise<WorkflowRun | null> {
+    return this.read((data) => {
+      const r = data.workflowRuns[runId];
+      return r && r.userId === userId ? structuredClone(r) : null;
+    });
+  }
+
+  findWorkflowRun(userId: string, idempotencyKey: string): Promise<WorkflowRun | null> {
+    return this.read((data) => structuredClone(Object.values(data.workflowRuns).find((r) => r.userId === userId && r.idempotencyKey === idempotencyKey) ?? null));
+  }
+
+  listWorkflowRuns(userId: string, limit = 30): Promise<WorkflowRun[]> {
+    return this.read((data) =>
+      Object.values(data.workflowRuns)
+        .filter((r) => r.userId === userId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, limit)
+        .map((r) => structuredClone(r)),
+    );
+  }
+
+  getDelivery(userId: string, key: string): Promise<Delivery | null> {
+    return this.read((data) => {
+      const d = data.deliveries[key];
+      return d && d.userId === userId ? structuredClone(d) : null;
+    });
+  }
+
+  saveDelivery(delivery: Delivery): Promise<void> {
+    return this.mutate((data) => {
+      const existing = data.deliveries[delivery.key];
+      if (existing && existing.userId !== delivery.userId) throw new Error("delivery key belongs to another reader");
+      data.deliveries[delivery.key] = structuredClone(delivery);
+    });
+  }
+
+  listDeliveries(userId: string, limit = 30): Promise<Delivery[]> {
+    return this.read((data) =>
+      Object.values(data.deliveries)
+        .filter((d) => d.userId === userId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, limit)
+        .map((d) => structuredClone(d)),
+    );
+  }
+
+  /** Demo mode has no accounts; DEMO_DELIVERY_EMAIL lets the local outbox demonstrate delivery. */
+  async getReaderEmail(): Promise<string | null> {
+    return process.env.DEMO_DELIVERY_EMAIL?.trim() || null;
   }
 
   listReadersForPreparation(limit: number): Promise<string[]> {

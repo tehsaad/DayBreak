@@ -12,9 +12,12 @@ import type { Store } from "../store/types";
 import { displayExcerpt, rightsFor } from "../news/rights";
 import { contentHash } from "../ai/summaries";
 import type { Article, ArticleSnapshot, Edition, EditionStory, ReaderPreferences } from "../types";
+import { untracked, type StageOutcome, type StageTracker } from "../workflow/tracker";
 import { evidenceBiggerPicture, evidenceThreeThings, findEarlierCoverage, templateIntro } from "./evidence";
+import { verifyStories, type VerifyReport } from "./verify";
 
 export class CooldownError extends Error {
+  readonly transient = false;
   constructor(public readonly retryAfterSeconds: number) {
     super(`Please wait ${retryAfterSeconds}s before regenerating`);
     this.name = "CooldownError";
@@ -22,6 +25,7 @@ export class CooldownError extends Error {
 }
 
 export class NoContentError extends Error {
+  readonly transient = false;
   constructor(message: string) {
     super(message);
     this.name = "NoContentError";
@@ -49,6 +53,8 @@ export interface GenerateOptions {
   /** Override article source (tests, evaluation). */
   articles?: Article[];
   log?: (msg: string, data?: Record<string, unknown>) => void;
+  /** Stage reporting for the workflow runner (default: untracked). */
+  tracker?: StageTracker;
 }
 
 export interface GenerateResult {
@@ -56,6 +62,9 @@ export interface GenerateResult {
   created: boolean;
   aiUsed: boolean;
   ingestion: { ran: boolean; inserted: number; errors: number } | null;
+  /** LLM token usage reported by the provider for this generation (null when no call was made). */
+  usage: { inputTokens: number | null; outputTokens: number | null; model: string | null } | null;
+  verify: VerifyReport | null;
 }
 
 /** Number of top stories that get Bigger Picture analysis at generation time. */
@@ -126,69 +135,103 @@ async function doGenerate(opts: GenerateOptions): Promise<GenerateResult> {
   const { store, userId, prefs } = opts;
   const now = opts.now ?? new Date();
   const log = opts.log ?? (() => undefined);
+  const tracker = opts.tracker ?? untracked;
   const editionDate = editionDateFor(prefs.timezone, now);
 
   const latestToday = await store.latestEdition(userId, editionDate);
-  if (opts.mode === "ensure" && latestToday) return { edition: latestToday, created: false, aiUsed: latestToday.ai.used, ingestion: null };
+  if (opts.mode === "ensure" && latestToday) {
+    for (const stage of ["fetch", "rank", "summarize", "verify", "render"] as const) await tracker.skip(stage, "Today's edition already exists; reused it.");
+    return { edition: latestToday, created: false, aiUsed: latestToday.ai.used, ingestion: null, usage: null, verify: null };
+  }
   if (opts.mode === "regenerate" && latestToday) {
     const age = (now.getTime() - Date.parse(latestToday.createdAt)) / 1000;
     if (age < LIMITS.regenerateCooldownSeconds) throw new CooldownError(Math.ceil(LIMITS.regenerateCooldownSeconds - age));
   }
   const revision = (latestToday?.revision ?? 0) + 1;
 
-  const { articles, contentMode, ingestion } = await loadCandidates(opts, now, log);
-  const [feedback, editionList] = await Promise.all([store.listFeedback(userId, 90), store.listEditions(userId, 10)]);
-  const learned = computeLearnedProfile(feedback, now);
+  const { articles, contentMode, ingestion } = await tracker.run(
+    "fetch",
+    () => loadCandidates(opts, now, log),
+    (r) => ({
+      metrics: { candidates: r.articles.length, contentMode: r.contentMode, refreshed: r.ingestion?.ran ?? false, inserted: r.ingestion?.inserted ?? null, feedErrors: r.ingestion?.errors ?? null },
+      status: r.contentMode === "sample" && !opts.articles && newsMode() !== "sample" ? "degraded" : "succeeded",
+      note: r.contentMode === "sample" && !opts.articles && newsMode() !== "sample" ? "Live feeds returned too few articles; used the labelled sample set." : null,
+    }),
+    { attempts: 2, baseMs: 500, capMs: 2_000 },
+  );
 
-  // Earlier days' editions: exposure penalties and "what changed" comparisons.
-  const earlierSummaries = editionList.filter((e) => e.editionDate !== editionDate).slice(0, 7);
-  const history = (await Promise.all(earlierSummaries.map((e) => store.getEdition(userId, e.id)))).filter((e): e is Edition => Boolean(e));
-  const seenIds = new Set(history.flatMap((e) => e.stories.map((s) => s.article.id)));
-  const seenTitles = history.flatMap((e) => e.stories.map((s) => s.article.title));
-
-  const plan = planEdition({ articles, prefs, learned, now, seenIds, seenTitles });
-  if (plan.stories.length === 0) throw new NoContentError("No stories matched your preferences. Try following more sections or unmuting a topic.");
+  const { plan, learned, history } = await tracker.run(
+    "rank",
+    async () => {
+      const [feedback, editionList] = await Promise.all([store.listFeedback(userId, 90), store.listEditions(userId, 10)]);
+      const learned = computeLearnedProfile(feedback, now);
+      // Earlier days' editions: exposure penalties and "what changed" comparisons.
+      const earlierSummaries = editionList.filter((e) => e.editionDate !== editionDate).slice(0, 7);
+      const history = (await Promise.all(earlierSummaries.map((e) => store.getEdition(userId, e.id)))).filter((e): e is Edition => Boolean(e));
+      const seenIds = new Set(history.flatMap((e) => e.stories.map((s) => s.article.id)));
+      const seenTitles = history.flatMap((e) => e.stories.map((s) => s.article.title));
+      const plan = planEdition({ articles, prefs, learned, now, seenIds, seenTitles });
+      if (plan.stories.length === 0) throw new NoContentError("No stories matched your preferences. Try following more sections or unmuting a topic.");
+      return { plan, learned, history };
+    },
+    (r) => ({ metrics: { candidates: r.plan.candidateCount, selected: r.plan.stories.length, sections: r.plan.sections.length, feedbackSignals: r.learned.signalCount } }),
+  );
 
   const snapshots = plan.stories.map((s) => snapshot(s.scored.article));
 
   // ---- AI editorial pass (optional) -------------------------------------------------
-  let editorial: EditorialResult | null = null;
-  let aiNote: string | null = opts.ai ? null : llmStatusNote();
-  if (opts.ai) {
-    try {
-      const cached = await store.getCachedSummaries(snapshots.map((s) => s.id), opts.ai.modelId);
-      // Reuse a cached summary only while the article text it was written from is unchanged.
-      const hashes = new Map(snapshots.map((s) => [s.id, contentHash(s)]));
-      const cachedById = new Map(cached.filter((c) => c.contentHash === hashes.get(c.articleId)).map((c) => [c.articleId, c.summary]));
-      editorial = await runEditorial(
-        opts.ai.model,
-        {
-          prefs,
-          editionDate,
-          // Sources whose rules forbid AI processing are left out of the prompt entirely.
-          stories: plan.stories.flatMap((s, i) => (rightsFor(snapshots[i]!.sourceId).ai ? [{
-            article: snapshots[i]!,
-            cachedSummary: cachedById.get(snapshots[i]!.id) ?? null,
-            earlier: i < BIGGER_PICTURE_AT_GENERATION ? findEarlierCoverage(snapshots[i]!, history) : [],
-            wantsBiggerPicture: i < BIGGER_PICTURE_AT_GENERATION,
-          }] : [])),
-        },
-        { timeoutMs: opts.ai.timeoutMs, maxOutputTokens: opts.ai.maxOutputTokens },
-      );
-      const fresh = [...editorial.summaries.entries()].filter(([id]) => !cachedById.has(id));
-      if (fresh.length) {
-        await store.saveCachedSummaries(fresh.map(([articleId, v]) => ({ articleId, summary: v.summary, model: editorial!.answeredBy ?? opts.ai!.modelId, createdAt: now.toISOString(), contentHash: hashes.get(articleId) ?? null })));
+  const { editorial, aiNote } = await tracker.run(
+    "summarize",
+    async () => {
+      let editorial: EditorialResult | null = null;
+      let aiNote: string | null = opts.ai ? null : llmStatusNote();
+      let cachedCount = 0;
+      if (opts.ai) {
+        try {
+          const cached = await store.getCachedSummaries(snapshots.map((s) => s.id), opts.ai.modelId);
+          // Reuse a cached summary only while the article text it was written from is unchanged.
+          const hashes = new Map(snapshots.map((s) => [s.id, contentHash(s)]));
+          const cachedById = new Map(cached.filter((c) => c.contentHash === hashes.get(c.articleId)).map((c) => [c.articleId, c.summary]));
+          cachedCount = cachedById.size;
+          editorial = await runEditorial(
+            opts.ai.model,
+            {
+              prefs,
+              editionDate,
+              // Sources whose rules forbid AI processing are left out of the prompt entirely.
+              stories: plan.stories.flatMap((s, i) => (rightsFor(snapshots[i]!.sourceId).ai ? [{
+                article: snapshots[i]!,
+                cachedSummary: cachedById.get(snapshots[i]!.id) ?? null,
+                earlier: i < BIGGER_PICTURE_AT_GENERATION ? findEarlierCoverage(snapshots[i]!, history) : [],
+                wantsBiggerPicture: i < BIGGER_PICTURE_AT_GENERATION,
+              }] : [])),
+            },
+            { timeoutMs: opts.ai.timeoutMs, maxOutputTokens: opts.ai.maxOutputTokens },
+          );
+          const fresh = [...editorial.summaries.entries()].filter(([id]) => !cachedById.has(id));
+          if (fresh.length) {
+            await store.saveCachedSummaries(fresh.map(([articleId, v]) => ({ articleId, summary: v.summary, model: editorial!.answeredBy ?? opts.ai!.modelId, createdAt: now.toISOString(), contentHash: hashes.get(articleId) ?? null })));
+          }
+          if (editorial.rejected.length) log("ai_rejected_items", { count: editorial.rejected.length, reasons: editorial.rejected.slice(0, 10) });
+          log("ai_editorial", { usage: editorial.usage, summaries: editorial.summaries.size });
+        } catch (err) {
+          log("ai_failed", { error: (err as Error).message?.slice(0, 200) });
+          aiNote = "The AI editor was unavailable for this edition, so summaries come from publishers' descriptions.";
+          editorial = null;
+        }
       }
-      if (editorial.rejected.length) log("ai_rejected_items", { count: editorial.rejected.length, reasons: editorial.rejected.slice(0, 10) });
-      log("ai_editorial", { usage: editorial.usage, summaries: editorial.summaries.size });
-    } catch (err) {
-      log("ai_failed", { error: (err as Error).message?.slice(0, 200) });
-      aiNote = "The AI editor was unavailable for this edition, so summaries come from publishers' descriptions.";
-      editorial = null;
-    }
-  }
+      return { editorial, aiNote, cachedCount };
+    },
+    (r): StageOutcome => ({
+      status: !opts.ai ? "skipped" : r.editorial ? "succeeded" : "degraded",
+      note: !opts.ai || !r.editorial ? r.aiNote : null,
+      metrics: r.editorial
+        ? { aiSummaries: r.editorial.summaries.size, cachedSummaries: r.cachedCount, rejectedByValidator: r.editorial.rejected.length, inputTokens: r.editorial.usage.inputTokens ?? null, outputTokens: r.editorial.usage.outputTokens ?? null, model: r.editorial.answeredBy ?? opts.ai?.modelId ?? null }
+        : {},
+    }),
+  );
 
-  const stories: EditionStory[] = plan.stories.map((s: PlannedStory, position) => {
+  const drafted: EditionStory[] = plan.stories.map((s: PlannedStory, position) => {
     const article = snapshots[position]!;
     const ai = editorial?.summaries.get(article.id);
     const bp =
@@ -210,6 +253,17 @@ async function doGenerate(opts: GenerateOptions): Promise<GenerateResult> {
       biggerPicture: bp,
     };
   });
+
+  // ---- Grounding audit: AI text may not introduce names or numbers absent from the source.
+  const { stories, report: verify } = await tracker.run(
+    "verify",
+    async () => verifyStories(drafted),
+    (v) => ({
+      metrics: { checked: v.report.checked, aiSummaries: v.report.aiSummaries, sourceSummaries: v.report.sourceSummaries, reverted: v.report.reverted, problems: v.report.problems.length },
+      status: v.report.problems.length ? "degraded" : "succeeded",
+      note: v.report.reverted ? `${v.report.reverted} AI summar${v.report.reverted === 1 ? "y" : "ies"} failed a grounding check and were replaced by the publisher's excerpt.` : v.report.problems.length ? "Some stories have missing source metadata." : null,
+    }),
+  );
 
   const evidenceThings = evidenceThreeThings(stories.map((s) => ({ article: s.article, score: s.score })), prefs);
   const aiThings = editorial?.threeThings ?? [];
@@ -245,7 +299,14 @@ async function doGenerate(opts: GenerateOptions): Promise<GenerateResult> {
     threeThings,
   };
 
-  const { edition: stored, created } = await store.insertEdition(edition);
+  // The (user, date, revision) unique key makes this insert idempotent, so it is safe to retry.
+  const { edition: stored, created } = await tracker.run(
+    "render",
+    () => store.insertEdition(edition),
+    (r) => ({ metrics: { editionId: r.edition.id, created: r.created, revision, stories: stories.length } }),
+    { attempts: 3, baseMs: 400, capMs: 3_000 },
+  );
   log("edition_saved", { editionId: stored.id, created, revision, stories: stories.length, contentMode, aiUsed });
-  return { edition: stored, created, aiUsed, ingestion };
+  const usage = editorial ? { inputTokens: editorial.usage.inputTokens ?? null, outputTokens: editorial.usage.outputTokens ?? null, model: editorial.answeredBy ?? opts.ai?.modelId ?? null } : null;
+  return { edition: stored, created, aiUsed, ingestion, usage, verify };
 }
