@@ -7,6 +7,7 @@ import type { Edition } from "@/lib/types";
 import { BriefStory, LeadStory, SideStory, StandardStory, type StoryProps } from "./stories";
 import { ThreeThings } from "./three-things";
 import { RegenerateButton } from "./generate-button";
+import { ListenButton } from "./listen-button";
 import { formatEditionDate, formatTime } from "./format";
 
 interface Props {
@@ -118,6 +119,7 @@ export function PaperView({ edition, savedIds, isToday, isLatest, storageMode }:
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2 lg:ml-auto">
+          <ListenButton edition={edition} />
           <a className="btn btn-ghost !py-1.5" href={`/api/editions/${edition.id}/pdf`} download>
             <Download size={15} aria-hidden /> PDF
           </a>

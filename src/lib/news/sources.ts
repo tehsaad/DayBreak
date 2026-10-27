@@ -27,8 +27,11 @@ export interface SourceDef {
    * local when it actually mentions the country.
    */
   localByDefault?: boolean;
-  /** "rss" (default) or "gnews" (API, only active when GNEWS_API_KEY is set). */
-  kind?: "rss" | "gnews";
+  /**
+   * "rss" (default), "gnews" (API, only active when GNEWS_API_KEY is set) or "gnews-search"
+   * (reader-initiated web search; never part of scheduled ingestion).
+   */
+  kind?: "rss" | "gnews" | "gnews-search";
   /** GNews top-headlines parameters. */
   gnews?: { category: string; country?: string };
 }
@@ -132,7 +135,24 @@ export const SOURCES: SourceDef[] = [
 /** RSS feeds plus the GNews sources (the latter only fetched when GNEWS_API_KEY is set). */
 export const ALL_SOURCES: SourceDef[] = [...SOURCES, ...GNEWS_SOURCES];
 
-export const SOURCE_BY_ID: Record<string, SourceDef> = Object.fromEntries(ALL_SOURCES.map((s) => [s.id, s]));
+/**
+ * Articles a reader found through "Search the web" (GNews search API). Registered so they can be
+ * stored, saved and attributed like any other article, but never fetched by ingestion.
+ */
+export const GNEWS_SEARCH_SOURCE: SourceDef = {
+  id: "gnews-search",
+  publisher: "GNews",
+  name: "GNews — reader searches",
+  feedUrl: "https://gnews.io/api/v4/search",
+  homepage: GNEWS_HOME,
+  topics: [],
+  region: "GLOBAL",
+  status: "active",
+  priority: 3,
+  kind: "gnews-search",
+};
+
+export const SOURCE_BY_ID: Record<string, SourceDef> = Object.fromEntries([...ALL_SOURCES, GNEWS_SEARCH_SOURCE].map((s) => [s.id, s]));
 
 export function activeSources(): SourceDef[] {
   const hasGNews = Boolean(gnewsApiKey());

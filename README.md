@@ -35,6 +35,14 @@ DAYBREAK gathers real reporting from 43 RSS feeds (21 publishers, including Dawn
 
 ---
 
+## Orchestration, scheduling and delivery (Oct 2026)
+
+Every paper — manual, overnight-prepared or scheduled for email — is produced by one workflow, `fetch → rank → summarize → verify → render → deliver`, recorded stage by stage in `workflow_runs` and visible to the reader on **Activity**. Runs are idempotent per reader and day, retry transient failures with bounded backoff, resume from the saved edition, and never email the same edition twice. Readers set a local delivery time, frequency and format (link, PDF or both) under **Settings → Delivery**.
+
+- Architecture: [current state](docs/architecture/current-state.md) · [target state + diagrams](docs/architecture/target-state.md) · [decisions](docs/architecture/decisions.md)
+- Running it: [operations guide](docs/operations.md) · [cost report](docs/cost-report.md) · [roadmap](docs/implementation/roadmap.md) · [final report](docs/implementation/final-report.md)
+- **Before deploying:** apply `supabase/migrations/20261027090000_daybreak_8_workflow_runs_and_deliveries.sql`.
+
 ## Quick start
 
 Requirements: Node.js 20.9+ (tested on 22) and npm.

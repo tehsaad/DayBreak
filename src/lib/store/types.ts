@@ -10,6 +10,16 @@ import type {
   SourceHealth,
 } from "../types";
 import type { TopicId } from "../topics";
+import type { Delivery, WorkflowRun } from "../workflow/types";
+
+/** Another workflow is already running for this reader. */
+export class RunBusyError extends Error {
+  readonly transient = true;
+  constructor() {
+    super("Another run is already in progress for this reader");
+    this.name = "RunBusyError";
+  }
+}
 
 export interface ArticleQuery {
   sinceHours?: number;
@@ -88,6 +98,27 @@ export interface Store {
   /** Materialised copy of inferred topic weights, for inspection. */
   saveAffinities(userId: string, weights: Partial<Record<TopicId, { weight: number; events: number }>>): Promise<void>;
 
+  // Workflow runs and deliveries (reader-owned; the scheduler uses the service store)
+  /** Insert unless (userId, idempotencyKey) exists; throws RunBusyError if another run is running. */
+  createWorkflowRun(run: WorkflowRun): Promise<{ run: WorkflowRun; created: boolean }>;
+  /** Replace a run's mutable fields; throws RunBusyError if it would make a second run "running". */
+  saveWorkflowRun(run: WorkflowRun): Promise<void>;
+  getWorkflowRun(userId: string, runId: string): Promise<WorkflowRun | null>;
+  /**
+   * Conditional cancel: a running run gets cancelRequested (honoured at the next stage boundary);
+   * a failed or partial run becomes "cancelled". Only the flag/status changes, and only while the
+   * run is still in that state, so it can never overwrite a run that finished meanwhile.
+   * Returns the updated run, or null when the precondition no longer holds.
+   */
+  requestCancel(userId: string, runId: string, now: string): Promise<WorkflowRun | null>;
+  findWorkflowRun(userId: string, idempotencyKey: string): Promise<WorkflowRun | null>;
+  listWorkflowRuns(userId: string, limit?: number): Promise<WorkflowRun[]>;
+  getDelivery(userId: string, key: string): Promise<Delivery | null>;
+  saveDelivery(delivery: Delivery): Promise<void>;
+  listDeliveries(userId: string, limit?: number): Promise<Delivery[]>;
+
   // Cron (service credentials only)
   listReadersForPreparation(limit: number): Promise<string[]>;
+  /** The reader's account email (service credentials), or null. */
+  getReaderEmail(userId: string): Promise<string | null>;
 }

@@ -16,7 +16,8 @@ import type {
   ReaderPreferences,
   SourceHealth,
 } from "../types";
-import type { ArticleQuery, CachedSummary, FeedbackDeleteFilter, Store } from "./types";
+import type { Delivery, WorkflowRun } from "../workflow/types";
+import { RunBusyError, type ArticleQuery, type CachedSummary, type FeedbackDeleteFilter, type Store } from "./types";
 
 type Row = Record<string, unknown>;
 
@@ -60,6 +61,87 @@ const rowToArticle = (r: Row): Article => ({
 });
 
 const ARTICLE_COLUMNS = "id,url,title,description,publisher,source_id,author,image_url,published_at,collected_at,topics,regions,categories,sample";
+
+const runToRow = (r: WorkflowRun): Row => ({
+  id: r.id,
+  user_id: r.userId,
+  trigger: r.trigger,
+  idempotency_key: r.idempotencyKey,
+  status: r.status,
+  edition_date: r.editionDate,
+  scheduled_for: r.scheduledFor,
+  created_at: r.createdAt,
+  started_at: r.startedAt,
+  finished_at: r.finishedAt,
+  duration_ms: r.durationMs,
+  attempt: r.attempt,
+  stages: r.stages,
+  edition_id: r.editionId,
+  edition_created: r.editionCreated,
+  deliver: r.deliver,
+  usage: r.usage,
+  error: r.error,
+  cancel_requested: r.cancelRequested,
+  updated_at: r.updatedAt,
+});
+
+const rowToRun = (r: Row): WorkflowRun => ({
+  id: r.id as string,
+  userId: r.user_id as string,
+  trigger: r.trigger as WorkflowRun["trigger"],
+  idempotencyKey: r.idempotency_key as string,
+  status: r.status as WorkflowRun["status"],
+  editionDate: r.edition_date as string,
+  scheduledFor: (r.scheduled_for as string) ?? null,
+  createdAt: r.created_at as string,
+  startedAt: (r.started_at as string) ?? null,
+  finishedAt: (r.finished_at as string) ?? null,
+  durationMs: (r.duration_ms as number) ?? null,
+  attempt: (r.attempt as number) ?? 1,
+  stages: (r.stages as WorkflowRun["stages"]) ?? [],
+  editionId: (r.edition_id as string) ?? null,
+  editionCreated: (r.edition_created as boolean) ?? null,
+  deliver: Boolean(r.deliver),
+  usage: { inputTokens: null, outputTokens: null, estimatedCostUsd: null, model: null, ...((r.usage as object) ?? {}) },
+  error: (r.error as WorkflowRun["error"]) ?? null,
+  cancelRequested: Boolean(r.cancel_requested),
+  updatedAt: r.updated_at as string,
+});
+
+const deliveryToRow = (d: Delivery): Row => ({
+  key: d.key,
+  user_id: d.userId,
+  edition_id: d.editionId,
+  run_id: d.runId,
+  channel: d.channel,
+  format: d.format,
+  status: d.status,
+  attempts: d.attempts,
+  provider_id: d.providerId,
+  transport: d.transport,
+  error: d.error?.slice(0, 400) ?? null,
+  created_at: d.createdAt,
+  updated_at: d.updatedAt,
+});
+
+const rowToDelivery = (r: Row): Delivery => ({
+  key: r.key as string,
+  userId: r.user_id as string,
+  editionId: r.edition_id as string,
+  runId: (r.run_id as string) ?? "",
+  channel: "email",
+  format: r.format as Delivery["format"],
+  status: r.status as Delivery["status"],
+  attempts: (r.attempts as number) ?? 0,
+  providerId: (r.provider_id as string) ?? null,
+  transport: r.transport as string,
+  error: (r.error as string) ?? null,
+  createdAt: r.created_at as string,
+  updatedAt: r.updated_at as string,
+});
+
+/** Postgres unique violation on the one-running-run index. */
+const isBusy = (err: { code?: string; message: string } | null) => Boolean(err && err.code === "23505" && /one_running/.test(err.message));
 
 function storyToRow(s: EditionStory): Row {
   return {
@@ -534,6 +616,71 @@ export class SupabaseStore implements Store {
 
   async removeBookmark(userId: string, articleId: string): Promise<void> {
     check(await this.user.from("saved_articles").delete().eq("user_id", userId).eq("article_id", articleId), "bookmark remove");
+  }
+
+  async createWorkflowRun(run: WorkflowRun): Promise<{ run: WorkflowRun; created: boolean }> {
+    const res = await this.user.from("workflow_runs").insert(runToRow(run));
+    if (!res.error) return { run, created: true };
+    if (isBusy(res.error)) throw new RunBusyError();
+    if (res.error.code === "23505") {
+      const existing = await this.findWorkflowRun(run.userId, run.idempotencyKey);
+      if (existing) return { run: existing, created: false };
+    }
+    throw new Error(`Supabase run create failed: ${res.error.message}`);
+  }
+
+  async saveWorkflowRun(run: WorkflowRun): Promise<void> {
+    const fields = runToRow(run);
+    // Identity columns never change after creation.
+    delete fields.id;
+    delete fields.user_id;
+    delete fields.created_at;
+    const res = await this.user.from("workflow_runs").update(fields).eq("id", run.id).eq("user_id", run.userId);
+    if (isBusy(res.error)) throw new RunBusyError();
+    check(res, "run save");
+  }
+
+  async requestCancel(userId: string, runId: string, now: string): Promise<WorkflowRun | null> {
+    const running = check(await this.user.from("workflow_runs").update({ cancel_requested: true, updated_at: now }).eq("id", runId).eq("user_id", userId).eq("status", "running").select("*"), "run cancel") as Row[];
+    if (running[0]) return rowToRun(running[0]);
+    const ended = check(await this.user.from("workflow_runs").update({ status: "cancelled", cancel_requested: true, updated_at: now }).eq("id", runId).eq("user_id", userId).in("status", ["failed", "partial"]).select("*"), "run cancel") as Row[];
+    return ended[0] ? rowToRun(ended[0]) : null;
+  }
+
+  async getWorkflowRun(userId: string, runId: string): Promise<WorkflowRun | null> {
+    const data = check(await this.user.from("workflow_runs").select("*").eq("user_id", userId).eq("id", runId).maybeSingle(), "run get") as Row | null;
+    return data ? rowToRun(data) : null;
+  }
+
+  async findWorkflowRun(userId: string, idempotencyKey: string): Promise<WorkflowRun | null> {
+    const data = check(await this.user.from("workflow_runs").select("*").eq("user_id", userId).eq("idempotency_key", idempotencyKey).maybeSingle(), "run find") as Row | null;
+    return data ? rowToRun(data) : null;
+  }
+
+  async listWorkflowRuns(userId: string, limit = 30): Promise<WorkflowRun[]> {
+    const data = check(await this.user.from("workflow_runs").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(limit), "run list") as Row[];
+    return data.map(rowToRun);
+  }
+
+  async getDelivery(userId: string, key: string): Promise<Delivery | null> {
+    const data = check(await this.user.from("deliveries").select("*").eq("user_id", userId).eq("key", key).maybeSingle(), "delivery get") as Row | null;
+    return data ? rowToDelivery(data) : null;
+  }
+
+  async saveDelivery(delivery: Delivery): Promise<void> {
+    check(await this.user.from("deliveries").upsert(deliveryToRow(delivery), { onConflict: "key" }), "delivery save");
+  }
+
+  async listDeliveries(userId: string, limit = 30): Promise<Delivery[]> {
+    const data = check(await this.user.from("deliveries").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(limit), "delivery list") as Row[];
+    return data.map(rowToDelivery);
+  }
+
+  async getReaderEmail(userId: string): Promise<string | null> {
+    if (!this.service) return null;
+    const { data, error } = await this.svc.auth.admin.getUserById(userId);
+    if (error) throw new Error(`Supabase user lookup failed: ${error.message}`);
+    return data.user?.email ?? null;
   }
 
   async listReadersForPreparation(limit: number): Promise<string[]> {

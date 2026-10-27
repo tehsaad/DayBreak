@@ -18,7 +18,9 @@ export async function GET(req: Request, ctx: RouteContext<"/api/editions/[id]/pd
   const edition = await reader.store.getEdition(reader.userId, id);
   if (!edition) return apiError(404, "Edition not found");
 
-  const version = `${edition.id}:${edition.stories.filter((s) => s.biggerPicture).length}`;
+  const requested = new URL(req.url).searchParams.get("template");
+  const template = requested === "briefing" || requested === "editorial" ? requested : ((await reader.store.getPreferences(reader.userId))?.pdfTemplate ?? "editorial");
+  const version = `${edition.id}:${edition.stories.filter((s) => s.biggerPicture).length}:${template}`;
   const etag = `"${version}"`;
   if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: { etag } });
 
@@ -26,7 +28,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/editions/[id]/pd
   if (!pdf) {
     const started = Date.now();
     try {
-      pdf = await renderEditionPdf(edition);
+      pdf = await renderEditionPdf(edition, { template });
     } catch (err) {
       log("pdf_failed", { edition: id, error: (err as Error).message?.slice(0, 200) });
       return apiError(500, "The PDF could not be generated. Please try again.");
@@ -35,7 +37,7 @@ export async function GET(req: Request, ctx: RouteContext<"/api/editions/[id]/pd
     cache.set(version, pdf);
     if (cache.size > 25) cache.delete(cache.keys().next().value!);
   }
-  const filename = `daybreak-${edition.editionDate}-edition-${edition.revision}.pdf`;
+  const filename = `daybreak-${edition.editionDate}-edition-${edition.revision}${template === "briefing" ? "-briefing" : ""}.pdf`;
   const inline = new URL(req.url).searchParams.get("inline") === "1";
   return new Response(new Uint8Array(pdf), {
     headers: {

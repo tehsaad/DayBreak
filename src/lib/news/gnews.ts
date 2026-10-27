@@ -23,6 +23,21 @@ export function gnewsRequestUrl(source: SourceDef, apiKey: string): string {
   return url.toString();
 }
 
+export const GNEWS_SEARCH_ENDPOINT = "https://gnews.io/api/v4/search";
+
+/** Request URL for a reader's search (GNews /search). Includes the key — never log or store it. */
+export function gnewsSearchUrl(query: string, opts: { apiKey: string; from?: Date; max?: number }): string {
+  const url = new URL(GNEWS_SEARCH_ENDPOINT);
+  // GNews treats quotes and AND/OR/NOT as operators; pass plain words as a phrase-free query.
+  url.searchParams.set("q", query.replace(/["()]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100));
+  url.searchParams.set("lang", "en");
+  url.searchParams.set("max", String(opts.max ?? 10));
+  url.searchParams.set("sortby", "publishedAt");
+  if (opts.from) url.searchParams.set("from", opts.from.toISOString().replace(/\.\d{3}Z$/, "Z"));
+  url.searchParams.set("apikey", opts.apiKey);
+  return url.toString();
+}
+
 const GNewsResponse = z.object({
   totalArticles: z.number().optional(),
   articles: z

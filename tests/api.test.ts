@@ -214,3 +214,61 @@ describe("Explore APIs", () => {
     expect((await POST(req("POST", { articleId: "nope" }))).status).toBe(404);
   });
 });
+
+describe("workflow runs API", () => {
+  const CAROL = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  it("generates through the workflow and exposes the run only to its owner", async () => {
+    await store.savePreferences(CAROL, PROFILES.climateReader);
+    as(CAROL);
+    const { POST } = await import("@/app/api/editions/route");
+    const res = await POST(req("POST", { mode: "ensure" }));
+    expect(res.status).toBe(200);
+    const { runId } = await res.json();
+    expect(runId).toBeTruthy();
+    const { GET } = await import("@/app/api/runs/[id]/route");
+    const mine = await GET(req("GET"), params(runId));
+    expect(mine.status).toBe(200);
+    expect((await mine.json()).run.stages).toHaveLength(6);
+    as(BOB);
+    expect((await GET(req("GET"), params(runId))).status).toBe(404);
+    const list = await (await import("@/app/api/runs/route")).GET();
+    expect((await list.json()).runs).toHaveLength(0);
+    as(null);
+    expect((await GET(req("GET"), params(runId))).status).toBe(401);
+  });
+
+  it("refuses to retry a succeeded run and rejects cross-origin cancel", async () => {
+    as(CAROL);
+    const [run] = await store.listWorkflowRuns(CAROL, 1);
+    expect(run?.status).toBe("succeeded");
+    const retry = await (await import("@/app/api/runs/[id]/retry/route")).POST(req("POST", {}), params(run!.id));
+    expect(retry.status).toBe(409);
+    const cancel = await (await import("@/app/api/runs/[id]/cancel/route")).POST(req("POST", {}, { origin: "https://evil.example" }), params(run!.id));
+    expect(cancel.status).toBe(403);
+  });
+
+  it("saves delivery settings as a partial update without touching other preferences", async () => {
+    as(ALICE);
+    const { PUT } = await import("@/app/api/preferences/route");
+    const before = await store.getPreferences(ALICE);
+    const res = await PUT(req("PUT", { partial: true, delivery: { enabled: true, time: "06:15", format: "pdf" }, pdfTemplate: "briefing" }));
+    expect(res.status).toBe(200);
+    const after = (await res.json()).preferences;
+    expect(after.delivery).toMatchObject({ enabled: true, time: "06:15", format: "pdf" });
+    expect(after.pdfTemplate).toBe("briefing");
+    expect(after.sections).toEqual(before!.sections);
+    expect(after.onboardedAt).toBe(before!.onboardedAt);
+    await store.savePreferences(ALICE, PROFILES.aiResearcher);
+  });
+
+  it("protects the dispatch endpoint with CRON_SECRET", async () => {
+    const { GET } = await import("@/app/api/cron/dispatch/route");
+    expect((await GET(req("GET"))).status).toBe(503);
+    process.env.CRON_SECRET = "s3cret-value";
+    expect((await GET(req("GET", undefined, { authorization: "Bearer nope" }))).status).toBe(401);
+    const ok = await GET(req("GET", undefined, { authorization: "Bearer s3cret-value" }));
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).report.failed).toBe(0);
+    delete process.env.CRON_SECRET;
+  });
+});

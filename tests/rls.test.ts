@@ -153,4 +153,27 @@ describe("Supabase migration", () => {
     await db.exec("reset role;");
     expect((r.rows[0] as { n: number }).n).toBe(0);
   });
+  it("keeps workflow runs and deliveries private, idempotent and one-running-per-reader", async () => {
+    const run = (id: string, user: string, key: string, status = "running") =>
+      db.query("insert into public.workflow_runs (id, user_id, trigger, idempotency_key, status, edition_date) values ($1, $2, 'manual', $3, $4, '2026-10-17')", [id, user, key, status]);
+    await asUser(ALICE, () => run("aaaa0000-0000-4000-8000-000000000001", ALICE, "manual:1"));
+    // Same idempotency key again: rejected by the unique key (the app then reuses the first run).
+    await expect(asUser(ALICE, () => run("aaaa0000-0000-4000-8000-000000000002", ALICE, "manual:1", "failed"))).rejects.toThrow(/duplicate key/);
+    // A second running run for the same reader is rejected by the partial unique index.
+    await expect(asUser(ALICE, () => run("aaaa0000-0000-4000-8000-000000000003", ALICE, "manual:2"))).rejects.toThrow(/one_running/);
+    // Bob can neither see Alice's run nor create one in her name.
+    expect(await asUser(BOB, async () => (await db.query("select * from public.workflow_runs")).rows)).toHaveLength(0);
+    await expect(asUser(BOB, () => run("bbbb0000-0000-4000-8000-000000000001", ALICE, "manual:x"))).rejects.toThrow(/row-level security/);
+    const upd = await asUser(BOB, () => db.query("update public.workflow_runs set status = 'cancelled'"));
+    expect(upd.affectedRows ?? 0).toBe(0);
+
+    // Deliveries: owner only, and only for the owner's own editions.
+    const edition = "11111111-1111-4111-8111-111111111111";
+    const delivery = (user: string, key: string) =>
+      db.query("insert into public.deliveries (key, user_id, edition_id, channel, format, status, transport) values ($1, $2, $3, 'email', 'link', 'pending', 'log')", [key, user, edition]);
+    await asUser(ALICE, () => delivery(ALICE, `edition:${edition}:email`));
+    await expect(asUser(ALICE, () => delivery(ALICE, `edition:${edition}:email`))).rejects.toThrow(/duplicate key/);
+    await expect(asUser(BOB, () => delivery(BOB, "edition:bob-on-alice:email"))).rejects.toThrow(/row-level security/);
+    expect(await asUser(BOB, async () => (await db.query("select * from public.deliveries")).rows)).toHaveLength(0);
+  });
 });

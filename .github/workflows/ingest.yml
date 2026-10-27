@@ -1,7 +1,8 @@
-# Keeps the news pool fresh. Vercel Hobby crons run at most once a day, so this schedule calls the
-# protected ingestion endpoint every 30 minutes. It needs the repository secret CRON_SECRET (the
+# Keeps the news pool fresh and runs scheduled delivery. Vercel Hobby crons run at most once a day,
+# so this schedule calls the protected ingestion endpoint every 30 minutes, then the delivery
+# dispatcher (readers whose local delivery time has passed and who have not been delivered today). It needs the repository secret CRON_SECRET (the
 # same value as the Vercel CRON_SECRET); without it every run is a no-op with a notice.
-name: Scheduled ingestion
+name: Scheduled ingestion and delivery
 
 on:
   schedule:
@@ -34,6 +35,33 @@ jobs:
           # Header read from stdin so the secret never appears on a command line.
           out=$(printf 'authorization: Bearer %s\n' "$CRON_SECRET" |
             curl --silent --show-error --max-time 150 --retry 2 --retry-delay 10 -H @- -w '\n%{http_code}' "${PRODUCTION_URL:-https://daybreak-gilt.vercel.app}/api/cron/ingest")
+          status=${out##*$'\n'}; body=${out%$'\n'*}
+          echo "HTTP $status"
+          printf '%s\n' "$body" | head -c 2000
+          [ "$status" = "200" ]
+
+  dispatch:
+    # After ingestion so scheduled papers use the freshest pool; runs even if ingestion failed
+    # (the pool from the previous run is still usable).
+    needs: ingest
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - name: Dispatch scheduled deliveries
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set +x
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::notice title=Delivery skipped::Add the CRON_SECRET repository secret to enable scheduled delivery."
+            exit 0
+          fi
+          # No curl --retry: the endpoint is idempotent, but a timed-out request may still be running.
+          out=$(printf 'authorization: Bearer %s\n' "$CRON_SECRET" |
+            curl --silent --show-error --max-time 320 -H @- -w '\n%{http_code}' "${PRODUCTION_URL:-https://daybreak-gilt.vercel.app}/api/cron/dispatch")
           status=${out##*$'\n'}; body=${out%$'\n'*}
           echo "HTTP $status"
           printf '%s\n' "$body" | head -c 2000

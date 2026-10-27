@@ -3,7 +3,7 @@ import { Document, Font, Image, Link, Page, StyleSheet, Text, View, renderToBuff
 import { safeFetch } from "../security/safe-fetch";
 import { safeLinkUrl } from "../security/url";
 import { topicLabel } from "../topics";
-import type { BiggerPicture, Edition, EditionStory } from "../types";
+import type { BiggerPicture, Edition, EditionStory, PdfTemplate } from "../types";
 import { displayExcerpt } from "../news/rights";
 
 /** Publisher text is limited to one short sentence, as on the web. */
@@ -332,6 +332,77 @@ export function EditionDocument({ edition, leadImage }: { edition: Edition; lead
   );
 }
 
+const b = StyleSheet.create({
+  title: { fontFamily: "Newsreader", fontWeight: 800, fontSize: 26, letterSpacing: 3, lineHeight: 1.1 },
+  sub: { fontFamily: "Inter", fontSize: 8, color: C.muted, marginTop: 6, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.6 },
+  toc: { borderTopWidth: 1.2, borderBottomWidth: 0.6, borderColor: C.ink, paddingVertical: 6, marginBottom: 12 },
+  tocRow: { flexDirection: "row", fontFamily: "Inter", fontSize: 8, marginBottom: 2 },
+  tocNum: { width: 22, color: C.accent, fontWeight: 600 },
+  section: { fontFamily: "Inter", fontWeight: 600, fontSize: 8, letterSpacing: 1.2, textTransform: "uppercase", color: C.accent, borderBottomWidth: 0.6, borderBottomColor: C.rule, paddingBottom: 3, marginTop: 12, marginBottom: 6 },
+  item: { flexDirection: "row", marginBottom: 8 },
+  num: { width: 24, fontFamily: "Newsreader", fontWeight: 800, fontSize: 12, color: C.accent },
+  headline: { fontFamily: "Newsreader", fontWeight: 700, fontSize: 12, lineHeight: 1.18, marginBottom: 2 },
+});
+
+/**
+ * "Minimal briefing" template: one column, a numbered table of contents, then each story as
+ * headline, attribution, summary and source link. No images, no analysis boxes — a layout for
+ * reading on a phone or printing on two pages, not just a colour change.
+ */
+export function BriefingDocument({ edition }: { edition: Edition }) {
+  const stories = edition.stories;
+  const number = new Map(stories.map((st, i) => [st.position, i + 1]));
+  return (
+    <Document title={`DAYBREAK briefing — ${edition.editionDate}`} author="DAYBREAK" creator="DAYBREAK" producer="DAYBREAK">
+      <Page size="A4" style={[s.page, { paddingHorizontal: 64 }]}>
+        <Text style={b.title}>DAYBREAK BRIEFING</Text>
+        <Text style={b.sub}>
+          {editionDateLong(edition.editionDate)} · {stories.length} stories{edition.readerName ? ` · for ${pdfText(edition.readerName)}` : ""}
+        </Text>
+        {edition.contentMode === "sample" ? <Text style={s.banner}>SAMPLE EDITION — built from clearly labelled demonstration data, not live news.</Text> : null}
+        <View style={b.toc}>
+          {stories.map((st, i) => (
+            <View key={st.position} style={b.tocRow}>
+              <Text style={b.tocNum}>{i + 1}</Text>
+              <Text style={{ flex: 1 }}>{pdfText(st.article.title)}</Text>
+            </View>
+          ))}
+        </View>
+        {edition.sections.map((sec) => {
+          const items = sec.positions.map((p) => stories[p]).filter((st): st is EditionStory => Boolean(st));
+          if (!items.length) return null;
+          return (
+            <View key={sec.id}>
+              {items.map((st, i) => (
+                // The section heading travels with its first story so it is never orphaned.
+                <View key={st.position} wrap={false}>
+                  {i === 0 ? <Text style={b.section}>{pdfText(sec.title)}</Text> : null}
+                  <View style={b.item}>
+                    <Text style={b.num}>{number.get(st.position)}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={b.headline}>{pdfText(st.article.title)}</Text>
+                      <Meta story={st} />
+                      <Text>{pdfText(summaryOf(st))}</Text>
+                      <SourceLink story={st} />
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          );
+        })}
+        <Text style={[s.about, { marginTop: 12 }]}>
+          {edition.ai.used ? `Summaries were written by ${edition.ai.model} from each publisher's headline and excerpt and checked against that text; they are not independent fact-checks.` : "Summaries are the publishers' own descriptions."} Every story links to its original reporting. Reading time is an estimate.
+        </Text>
+        <View style={s.footer} fixed>
+          <Text>DAYBREAK briefing · {edition.editionDate}</Text>
+          <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
+        </View>
+      </Page>
+    </Document>
+  );
+}
+
 /** Fetch the lead image for print: JPEG/PNG only, size-capped, SSRF-checked, short timeout. */
 export async function fetchPdfImage(url: string | null): Promise<PdfImage | null> {
   if (!url) return null;
@@ -349,8 +420,9 @@ export async function fetchPdfImage(url: string | null): Promise<PdfImage | null
   }
 }
 
-export async function renderEditionPdf(edition: Edition, opts: { images?: boolean } = {}): Promise<Buffer> {
+export async function renderEditionPdf(edition: Edition, opts: { images?: boolean; template?: PdfTemplate } = {}): Promise<Buffer> {
   registerFonts();
+  if (opts.template === "briefing") return renderToBuffer(<BriefingDocument edition={edition} />);
   const leadImage = opts.images === false ? null : await fetchPdfImage(edition.stories[0]?.article.imageUrl ?? null);
   return renderToBuffer(<EditionDocument edition={edition} leadImage={leadImage} />);
 }

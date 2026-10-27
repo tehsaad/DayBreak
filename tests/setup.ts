@@ -13,8 +13,16 @@ for (const key of [
   "VERCEL_OIDC_TOKEN",
   "LLM_PROVIDER",
   "CRON_SECRET",
+  "GROQ_API_KEY",
+  "RESEND_API_KEY",
+  "RESEND_FROM_EMAIL",
+  "LLM_PRICE_INPUT_PER_MTOK",
+  "LLM_PRICE_OUTPUT_PER_MTOK",
+  "DEMO_DELIVERY_EMAIL",
 ]) {
   delete process.env[key];
 }
 process.env.NEWS_MODE = "sample";
 process.env.REGENERATE_COOLDOWN_SECONDS = "30";
+// Never email anyone from tests: messages become one log line each.
+process.env.EMAIL_TRANSPORT = "log";
